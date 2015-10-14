@@ -8,28 +8,14 @@
 
 namespace AllocParts {
 
-	template<typename Alloc, typename Tr>
-	constexpr bool has_trait (void) {
-		return std::is_base_of<Tr, Alloc>::value;
-	}
-
-	namespace Traits {
-		struct FreesEverythingAtDestruction { /* For allocators that do not require to free each object */ };
-	}
-	
 	/* Basic */
 	
-	struct System {
-		Ptr allocate (size_t size) { return Ptr (new uint8_t[size]); }
-		void deallocate (Ptr ptr) { delete[] ptr.as<uint8_t *> (); }
-	};
-
-	struct BumpPointerBase : public Traits::FreesEverythingAtDestruction {
+	struct BumpPointerBase {
 		Ptr left_; /* leftmost point of used segment (first used byte) */
 		Ptr left_mapped_; /* leftmost mapped segment (first mapped byte) */
 		Ptr right_; /* rightmost point of used segment (after last used byte) */
 		Ptr right_mapped_; /* leftmost mapped segment (after last mapped byte) */
-
+		
 		BumpPointerBase (Ptr start) :
 			left_ (start),
 			left_mapped_ (start),
@@ -40,7 +26,7 @@ namespace AllocParts {
 				throw std::runtime_error ("BumpPointerBase(): start not aligned");
 		}
 		~BumpPointerBase () {
-			VMem::unmap (left_mapped_, right_mapped_ - left_mapped_);
+			VMem::unmap_noexcept (left_mapped_, right_mapped_ - left_mapped_);
 		}
 		
 		Ptr allocate_right (size_t size, size_t align) {
@@ -61,12 +47,8 @@ namespace AllocParts {
 			}
 			return left_;
 		}
-
-		void deallocate (Ptr ptr) {
-			/* nothing to do */
-		}
 	};
-
+	
 	struct BumpPointer : public BumpPointerBase {
 		BumpPointer (Ptr start) : BumpPointerBase (start) {}
 		Ptr allocate (size_t size, size_t align) {
@@ -82,19 +64,17 @@ namespace AllocParts {
 
 	/* buddy allocator */
 
-	struct Buddy : public BumpPointer {
-		Buddy (Ptr start) : BumpPointer (start) {
-		}
-	};
+	struct Buddy {
+		BumpPointer sub_alloc_;
+		size_t chunk_order_;
 
-	/* frontend TODO std::allocator compatible ? stores a ref to suballoc */
-
-	template<typename SubAlloc> struct FrontEnd : public SubAlloc {
-		template<typename... Args> FrontEnd (Args && ... args) : SubAlloc (std::forward<Args> (args)...) {
+		Buddy (size_t chunk_order, Ptr start) : sub_alloc_ (start), chunk_order_ (chunk_order) {
 		}
 
-		template<typename T> T * allocate (size_t nb_elem) {
-			return allocate (nb_elem * sizeof (T), alignof (T)); // cannot specify T
+		Ptr allocate (size_t size) {
+			return nullptr;
+		}
+		void deallocate (Ptr block, size_t size) {
 		}
 	};
 }
