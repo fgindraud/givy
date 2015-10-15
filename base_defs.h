@@ -8,7 +8,8 @@
 #include <limits> // numeric_limits
 #include <climits> // CHAR_BIT
 #include <utility> // std::forward
-#include <iostream>
+
+using std::size_t;
 
 // system specific
 #include <sys/mman.h>
@@ -28,7 +29,7 @@ template<typename IntType> struct BitMask {
 	static_assert (std::numeric_limits<IntType>::is_integer, "IntType must be an integer");
 	static_assert (!std::numeric_limits<IntType>::is_signed, "IntType must be unsigned");
 
-	static const size_t Bits = sizeof (IntType) * CHAR_BIT;
+	static constexpr size_t Bits = std::numeric_limits<IntType>::digits;
 
 	static constexpr IntType zeros (void) noexcept {
 		return 0;
@@ -36,6 +37,10 @@ template<typename IntType> struct BitMask {
 	static constexpr IntType ones (void) noexcept {
 		return std::numeric_limits<IntType>::max ();
 	}
+	static constexpr IntType one (void) noexcept {
+		return 0x1;
+	}
+
 	static constexpr IntType lsb_ones (size_t nb) noexcept {
 		// nb 1s followed by 0s
 		if (nb == 0)
@@ -66,15 +71,15 @@ template<typename IntType> struct BitMask {
 		if (bit >= Bits)
 			return false;
 		else
-			return (IntType (0x1) << bit) & i;
+			return (one () << bit) & i;
 	}
-	static size_t find_zero_subsequence (IntType searched, size_t len, size_t from_bit) noexcept {
+	static size_t find_zero_subsequence (IntType searched, size_t len, size_t from_bit, size_t up_to_bit = Bits) noexcept {
 		// return first found offset, or Bits if not found
 		size_t window_end = from_bit + len;
-		if (window_end > Bits)
+		if (window_end > up_to_bit)
 			return Bits; // window too big
 		IntType bit_window = window_bound (from_bit, window_end);
-		while (window_end <= Bits) {
+		while (window_end <= up_to_bit) {
 			if ((searched & bit_window) == zeros ())
 				return window_end - len; // found
 			bit_window <<= 1;
@@ -92,10 +97,21 @@ template<typename IntType> struct BitMask {
 		for (; c; c <<= 1, --b);
 		return b;
 	}
+	static constexpr size_t count_zeros (IntType c) noexcept {
+		size_t b = 0;
+		for (; c; c >>= 1)
+			if (c & one () == zeros ())
+				b++;
+		return b;
+	}
 
-	static void print (IntType c, std::ostream & stream) {
-		for (size_t i = 0; i < Bits; ++i)
-			stream << (is_set (c, i) ? '1' : '0');
+	static const char * str (IntType c) {
+		static char buffer[Bits + 1] = { '\0' };
+		for (size_t i = 0; i < Bits; ++i) {
+			buffer[i] = (IntType (0x1) & c) ? '1' : '0';
+			c <<= 1;
+		}
+		return buffer;
 	}
 };
 
@@ -135,6 +151,15 @@ template<> constexpr size_t BitMask<unsigned long long>::count_lsb_zeros (unsign
 	if (c != 0)
 		b = __builtin_ctzll (c);
 	return b;
+}
+template<> constexpr size_t BitMask<unsigned int>::count_zeros (unsigned int c) noexcept {
+	return Bits - __builtin_popcount (c);
+}
+template<> constexpr size_t BitMask<unsigned long>::count_zeros (unsigned long c) noexcept {
+	return Bits - __builtin_popcountl (c);
+}
+template<> constexpr size_t BitMask<unsigned long long>::count_zeros (unsigned long long c) noexcept {
+	return Bits - __builtin_popcountll (c);
 }
 #endif
 
@@ -193,7 +218,7 @@ struct VMem {
 	static const size_t SuperpageSize = 1 << SuperpageShift;
 	static const size_t SuperpagePageNB = 1 << (SuperpageShift - PageShift);
 	
-	static_assert (sizeof (void *) == 8, "64 bit arch required");
+	static_assert (sizeof (void *) == 8, "64 bit arch required"); // FIXME ?
 	static void runtime_asserts (void) {
 		if (sysconf (_SC_PAGESIZE) != PageSize)
 			throw std::runtime_error ("invalid pagesize");
@@ -224,6 +249,39 @@ struct VMem {
 	static void discard (Ptr page_start, size_t size) {
 		if (discard_noexcept (page_start, size) != 0)
 			throw std::system_error (errno, std::system_category (), "madvise");
+	}
+};
+
+/* --------------------------- Global address space memory layout --------------------- */
+
+struct GasLayout {
+	Ptr start;
+	size_t space_by_node;
+	int nb_node;
+
+	size_t superpage_by_node;
+	size_t superpage_total;
+
+	GasLayout (Ptr start_, size_t space_by_node_, int nb_node_) :
+		start (start_),
+		space_by_node (space_by_node_),
+		nb_node (nb_node_),
+		// derived
+		superpage_by_node (Math::divide_up (space_by_node, VMem::SuperpageSize)),
+		superpage_total (superpage_by_node * nb_node)
+	{}
+
+	Ptr superpage (size_t num) const {
+		return start + VMem::SuperpageSize * num;
+	}
+	size_t superpage (Ptr inside) const {
+		return inside.sub (start) / VMem::SuperpageSize;
+	}
+	size_t node_area_start_superpage_num (int node) const {
+		return superpage_by_node * node;
+	}
+	size_t node_area_end_superpage_num (int node) const {
+		return node_area_start_superpage_num (node + 1);
 	}
 };
 

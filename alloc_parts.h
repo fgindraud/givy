@@ -8,6 +8,18 @@
 
 namespace AllocParts {
 
+	struct Block {
+		Ptr ptr;
+		size_t size;
+	};
+	
+	/* System (for tests) */
+
+	struct System {
+		Ptr allocate (size_t size, size_t) { return Ptr (new char[size]); }
+		void deallocate (Ptr ptr) { delete[] ptr.as<char *> (); }
+	};
+
 	/* Basic */
 	
 	struct BumpPointerBase {
@@ -62,21 +74,6 @@ namespace AllocParts {
 		}
 	};
 
-	/* buddy allocator */
-
-	struct Buddy {
-		BumpPointer sub_alloc_;
-		size_t chunk_order_;
-
-		Buddy (size_t chunk_order, Ptr start) : sub_alloc_ (start), chunk_order_ (chunk_order) {
-		}
-
-		Ptr allocate (size_t size) {
-			return nullptr;
-		}
-		void deallocate (Ptr block, size_t size) {
-		}
-	};
 }
 
 #endif
