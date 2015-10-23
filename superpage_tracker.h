@@ -2,6 +2,7 @@
 #define SUPERPAGE_TRACKER_H
 
 #include <atomic>
+#include <tuple>
 
 #include "base_defs.h"
 
@@ -62,7 +63,7 @@ class SuperpageTracker {
 			
 			size_t superpage_num (void) const { return array_idx * BitArray::Bits + bit_idx; }
 			void next_array_cell (void) { array_idx++; bit_idx = 0; }
-			bool operator< (const Index & rhs) const { return array_idx < rhs.array_idx || (array_idx == rhs.array_idx && bit_idx < rhs.bit_idx); }
+			bool operator< (const Index & rhs) const { return std::tie (array_idx, bit_idx) < std::tie (rhs.array_idx, rhs.bit_idx); }
 		};
 
 		bool set_mapping_bits (Index loc_start, IntType expected_start, Index loc_end, IntType expected_end);

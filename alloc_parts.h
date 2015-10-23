@@ -1,9 +1,7 @@
 #ifndef ALLOC_PARTS_H
 #define ALLOC_PARTS_H
 
-#include <stdexcept>
-#include <type_traits>
-
+#include "assert_level.h"
 #include "base_defs.h"
 
 namespace AllocParts {
@@ -34,8 +32,7 @@ namespace AllocParts {
 			right_ (start),
 			right_mapped_ (start)
 		{
-			if (not start.is_aligned (VMem::PageSize))
-				throw std::runtime_error ("BumpPointerBase(): start not aligned");
+			ASSERT_OPT (start.is_aligned (VMem::PageSize));
 		}
 		~BumpPointerBase () {
 			VMem::unmap_noexcept (left_mapped_, right_mapped_ - left_mapped_);

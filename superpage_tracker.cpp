@@ -1,6 +1,7 @@
 #include <cassert>
 #include <cstdio>
 
+#include "assert_level.h"
 #include "superpage_tracker.h"
 
 bool SuperpageTracker::set_mapping_bits (Index loc_start, IntType expected_start, Index loc_end, IntType expected_end) {
@@ -119,7 +120,9 @@ size_t SuperpageTracker::acquire (size_t superpage_nb, int node) {
 	 * search_at.bit_idx is taken into account if search starts in the middle of a cell.
 	 */
 	using std::memory_order::memory_order_seq_cst;
-	assert (superpage_nb > 0);
+	ASSERT_STD (superpage_nb > 0);
+	ASSERT_STD (node >= 0);
+	ASSERT_STD (node < layout.nb_node);
 
 	auto search_at = Index (layout.node_area_start_superpage_num (node));
 	auto search_end = Index (layout.node_area_end_superpage_num (node));
@@ -199,12 +202,15 @@ continue_no_load:
 void SuperpageTracker::release (size_t superpage_num, size_t superpage_nb) {
 	auto loc_start = Index (superpage_num);
 	auto loc_end = Index (superpage_num + superpage_nb);
+	ASSERT_STD (loc_start.array_idx < table_size);
+	ASSERT_STD (loc_end.array_idx < table_size);
 	clear_bits (loc_start, loc_end);
 }
 
 void SuperpageTracker::print (int superpage_by_line) const {
 	const int indicator_interval = 10;
 	const int line_prefix_size = 10;
+	ASSERT_STD (superpage_by_line > 0);
 
 	// Indicators
 	size_t nb_indicator = Math::divide_up (superpage_by_line, indicator_interval) + 1;
@@ -214,7 +220,8 @@ void SuperpageTracker::print (int superpage_by_line) const {
 	for (size_t i = 0; i < nb_indicator; ++i) printf ("/%*c", indicator_interval - 1, ' ');
 	
 	// Data
-	IntType m, s;
+	IntType m = 0;
+	IntType s = 0;
 	for (int node = 0; node < layout.nb_node; ++node) {
 		size_t start = layout.node_area_start_superpage_num (node);
 		for (size_t sp = start; sp < layout.node_area_end_superpage_num (node); ++sp) {

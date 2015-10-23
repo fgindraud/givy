@@ -15,9 +15,25 @@ using std::size_t;
 #include <sys/mman.h>
 #include <unistd.h>
 
+#include "assert_level.h"
+
 struct Math {
-	static constexpr bool is_power_2 (size_t x) noexcept { return x > 0 && (x & (x - 1)) == 0; }
-	static constexpr size_t divide_up (size_t n, size_t div) noexcept { return (n + div - 1) / div; }
+	template<typename T> static constexpr bool is_power_2 (T x) noexcept {
+		static_assert (std::numeric_limits<T>::is_integer, "T must be an integer");
+		return x > 0 && (x & (x - 1)) == 0;
+	}
+	template<typename T> static constexpr T divide_up (T n, T div) noexcept {
+		static_assert (std::numeric_limits<T>::is_integer, "T must be an integer");
+		return (n + div - 1) / div;
+	}
+	template<typename T> static constexpr T align (T n, T align) noexcept {
+		static_assert (std::numeric_limits<T>::is_integer, "T must be an integer");
+		return (n / align) * align;
+	}
+	template<typename T> static constexpr T align_up (T n, T align) noexcept {
+		static_assert (std::numeric_limits<T>::is_integer, "T must be an integer");
+		return divide_up (n, align) * align;
+	}
 };
 
 
@@ -76,8 +92,6 @@ template<typename IntType> struct BitMask {
 	static size_t find_zero_subsequence (IntType searched, size_t len, size_t from_bit, size_t up_to_bit = Bits) noexcept {
 		// return first found offset, or Bits if not found
 		size_t window_end = from_bit + len;
-		if (window_end > up_to_bit)
-			return Bits; // window too big
 		IntType bit_window = window_bound (from_bit, window_end);
 		while (window_end <= up_to_bit) {
 			if ((searched & bit_window) == zeros ())
@@ -189,8 +203,8 @@ struct Ptr {
 	constexpr Ptr & operator-= (size_t off) noexcept { return *this = sub (off); }
 	
 	// align : backward ; align_up : forward
-	constexpr Ptr align (size_t al) const noexcept { return Ptr ((p / al) * al); }
-	constexpr Ptr align_up (size_t al) const noexcept { return add (al - 1).align (al); }
+	constexpr Ptr align (size_t al) const noexcept { return Ptr (Math::align (p, al)); }
+	constexpr Ptr align_up (size_t al) const noexcept { return Ptr (Math::align_up (p, al)); }
 	constexpr bool is_aligned (size_t al) const noexcept { return p % al == 0; }
 	
 	// Compute diff
@@ -220,8 +234,7 @@ struct VMem {
 	
 	static_assert (sizeof (void *) == 8, "64 bit arch required"); // FIXME ?
 	static void runtime_asserts (void) {
-		if (sysconf (_SC_PAGESIZE) != PageSize)
-			throw std::runtime_error ("invalid pagesize");
+		ASSERT_STD (sysconf (_SC_PAGESIZE) == PageSize);
 	}
 	
 	static int map_noexcept (Ptr page_start, size_t size) noexcept {
@@ -255,21 +268,23 @@ struct VMem {
 /* --------------------------- Global address space memory layout --------------------- */
 
 struct GasLayout {
-	Ptr start;
-	size_t space_by_node;
-	int nb_node;
+	const Ptr start;
+	const size_t space_by_node;
+	const int nb_node;
 
-	size_t superpage_by_node;
-	size_t superpage_total;
+	const size_t superpage_by_node;
+	const size_t superpage_total;
 
 	GasLayout (Ptr start_, size_t space_by_node_, int nb_node_) :
-		start (start_),
-		space_by_node (space_by_node_),
+		start (Ptr (start_).align_up (VMem::SuperpageSize)),
+		space_by_node (Math::align_up (space_by_node_, VMem::SuperpageSize)),
 		nb_node (nb_node_),
 		// derived
-		superpage_by_node (Math::divide_up (space_by_node, VMem::SuperpageSize)),
+		superpage_by_node (Math::divide_up (space_by_node_, VMem::SuperpageSize)),
 		superpage_total (superpage_by_node * nb_node)
-	{}
+	{
+		ASSERT_STD (nb_node_ > 0);
+	}
 
 	Ptr superpage (size_t num) const {
 		return start + VMem::SuperpageSize * num;
