@@ -49,8 +49,39 @@ thread_local int tid = -1;
 
 ////////////////////////////////
 
-struct Superpage {
-	/* Aligned to 2MB : kernel will use hugepage if it can */
+
+
+struct PageBlockHeader {
+	enum class Type {
+		UnavailableSuperpageSpace,
+		Unused,
+		StartOfPageSequence,
+		InsidePageSequence,
+		InsideHugeAlloc,
+	};
+
+	Type type;
+};
+
+
+
+struct SuperpageHeader {
+	size_t superpage_nb; // If > 1, indicates a huge alloc
+	int owner; // thread id
+	PageBlockHeader * unusedBySize[10]; // freelist of unused chunks
+	
+	PageBlockHeader page_headers[VMem::SuperpagePageNB];
+
+	SuperpageHeader (size_t superpage_nb_) :
+		superpage_nb (superpage_nb_)
+	{
+		constexpr size_t superpage_header_nb_page = Math::divide_up (sizeof (SuperpageHeader), VMem::PageSize);
+		for (size_t i = 0; i < superpage_header_nb_page; ++i)
+			page_headers[i].type = PageBlockHeader::Type::UnavailableSuperpageSpace;
+		for (size_t i = superpage_header_nb_page; i < VMem::SuperpagePageNB; ++i)
+			page_headers[i].type = PageBlockHeader::Type::Unused;
+
+	}
 };
 
 struct RegionHeader {

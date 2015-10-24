@@ -30,8 +30,8 @@ class SuperpageTracker {
 			layout (layout_),
 			table_size (Math::divide_up (layout.superpage_total, BitArray::Bits))
 		{
-			mapping_table = allocator.allocate (table_size * sizeof (AtomicIntType), alignof (AtomicIntType));
-			sequence_table = allocator.allocate (table_size * sizeof (AtomicIntType), alignof (AtomicIntType));
+			mapping_table = allocator.allocate (table_size * sizeof (AtomicIntType), alignof (AtomicIntType)).ptr;
+			sequence_table = allocator.allocate (table_size * sizeof (AtomicIntType), alignof (AtomicIntType)).ptr;
 			for (size_t it = 0; it < table_size; ++it) {
 				new (&mapping_table[it]) AtomicIntType (BitArray::zeros ());
 				new (&sequence_table[it]) AtomicIntType (BitArray::zeros ());

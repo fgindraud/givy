@@ -232,7 +232,8 @@ struct VMem {
 	static const size_t SuperpageSize = 1 << SuperpageShift;
 	static const size_t SuperpagePageNB = 1 << (SuperpageShift - PageShift);
 	
-	static_assert (sizeof (void *) == 8, "64 bit arch required"); // FIXME ?
+	static_assert (sizeof (void *) == 8, "64 bit arch required");
+	static_assert (SuperpageSize > PageSize, "SuperpageSize <= PageSize");
 	static void runtime_asserts (void) {
 		ASSERT_STD (sysconf (_SC_PAGESIZE) == PageSize);
 	}
