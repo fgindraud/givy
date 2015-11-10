@@ -5,6 +5,7 @@
 #include "alloc_parts.h"
 #include "base_defs.h"
 #include "superpage_tracker.h"
+#include "chain.h"
 
 //////////////////////////////////
 
@@ -49,11 +50,12 @@ thread_local int tid = -1;
 
 ////////////////////////////////
 
-
+struct RegionHeader {
+};
 
 struct PageBlockHeader {
 	enum class Type {
-		UnavailableSuperpageSpace,
+		SuperpageHeaderSpace,
 		Unused,
 		StartOfPageSequence,
 		InsidePageSequence,
@@ -64,10 +66,10 @@ struct PageBlockHeader {
 };
 
 
-
 struct SuperpageHeader {
 	size_t superpage_nb; // If > 1, indicates a huge alloc
 	int owner; // thread id
+
 	PageBlockHeader * unusedBySize[10]; // freelist of unused chunks
 	
 	PageBlockHeader page_headers[VMem::SuperpagePageNB];
@@ -77,21 +79,18 @@ struct SuperpageHeader {
 	{
 		constexpr size_t superpage_header_nb_page = Math::divide_up (sizeof (SuperpageHeader), VMem::PageSize);
 		for (size_t i = 0; i < superpage_header_nb_page; ++i)
-			page_headers[i].type = PageBlockHeader::Type::UnavailableSuperpageSpace;
+			page_headers[i].type = PageBlockHeader::Type::SuperpageHeaderSpace;
 		for (size_t i = superpage_header_nb_page; i < VMem::SuperpagePageNB; ++i)
 			page_headers[i].type = PageBlockHeader::Type::Unused;
-
 	}
 };
 
-struct RegionHeader {
-	// defs
-	enum class Type {
-		Blah = 0
-	};
-	struct Splitted {
-	};
-};
+SuperpageHeader * createSuperpage (SuperpageTracker & tracker, int nb_superpage, int node, GasLayout & layout) {
+	Ptr superpage_sequence_start = layout.superpage (tracker.acquire (nb_superpage, node));
+	VMem::map (superpage_sequence_start, nb_superpage * VMem::SuperpageSize);
+	SuperpageHeader * header = new (superpage_sequence_start) SuperpageHeader (nb_superpage);
+	return header;
+}
 
 struct GasAllocator {
 	using BootstrapAllocator = AllocParts::BackwardBumpPointer;

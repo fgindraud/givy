@@ -7,6 +7,12 @@
 #include "base_defs.h"
 
 class SuperpageTracker {
+	/* Tracks the state of superpages.
+	 * 
+	 * Check if a superpage is used by the allocator.
+	 * Find the first superpage of a superpage sequence.
+	 * Acquire/release ownership of a superpage sequence.
+	 */
 	private:
 		using IntType = std::uintmax_t;
 		using AtomicIntType = std::atomic<IntType>;
