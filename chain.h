@@ -3,6 +3,8 @@
 
 #include <iterator>
 
+#include "assert_level.h"
+
 template <typename T, typename Tag = void> class ForwardChain {
 	/* Simple linked list with embedded elements.
 	 *
@@ -20,7 +22,8 @@ private:
 public:
 	T * pop (void) noexcept {
 		T * r = static_cast<T *> (head);
-		if (head != nullptr) head = head->next;
+		if (head != nullptr)
+			head = head->next;
 		return r;
 	}
 	void push (T & t) noexcept {
@@ -75,15 +78,19 @@ public:
 		Element & operator=(Element &&) = delete;
 	};
 
-	void push_front (T & t) noexcept { cross (&root, &t); }
-	void push_back (T & t) noexcept { cross (&t, &root); }
+	static void insert_after (Element & to_insert, Element & e) noexcept { cross (&e, &to_insert); }
+	static void insert_before (Element & to_insert, Element & e) noexcept { cross (&to_insert, &e); }
+	static void unlink (Element & e) noexcept { extract (&e); }
+
+	void push_front (T & t) noexcept { insert_after (t, root); }
+	void push_back (T & t) noexcept { insert_before (t, root); }
 	T * pop_front (void) noexcept {
 		Element * e = root.next;
 		if (e == &root) {
 			return nullptr;
 		} else {
 			extract (e);
-			return e;
+			return static_cast<T *> (e);
 		}
 	}
 	T * pop_back (void) noexcept {
@@ -92,33 +99,8 @@ public:
 			return nullptr;
 		} else {
 			extract (e);
-			return e;
+			return static_cast<T *> (e);
 		}
-	}
-
-	static void unlink (T & t) noexcept { extract (&t); }
-
-	/* comp (a, b) is a < b */
-	template <typename FunctionType>
-	void insert_sorted (T & to_insert, FunctionType & comp) noexcept (noexcept (comp)) {
-		for (auto & t : *this) {
-			if (comp (to_insert, t)) {
-				cross (&to_insert, &t);
-				return;
-			}
-		}
-		// Put at the end if above all others
-		cross (&to_insert, &root);
-	}
-	template <typename FunctionType>
-	T * pop_first_true (FunctionType & cond) noexcept (noexcept (cond)) {
-		for (auto & t : *this) {
-			if (cond (t)) {
-				extract (&t);
-				return &t;
-			}
-		}
-		return nullptr;
 	}
 
 	class iterator : public std::iterator<std::bidirectional_iterator_tag, T> {
@@ -150,8 +132,8 @@ public:
 		T & operator*(void) const noexcept { return *static_cast<T *> (current); }
 	};
 
-	iterator begin (void) const noexcept { return {root.next}; }
-	iterator end (void) const noexcept { return {&root}; }
+	iterator begin (void) noexcept { return {root.next}; }
+	iterator end (void) noexcept { return {&root}; }
 
 private:
 	/* Element structs forms a double linked circular chain. */
@@ -182,6 +164,59 @@ private:
 	 * Cuts a->link, link->b, generates a->b, link->link.
 	 */
 	static void extract (Element * link) noexcept { cross (link, link); }
+};
+
+template <typename T, size_t exact_size_slot_nb> struct QuickList {
+	struct Tag; // Custom tag for Chain
+	using ListType = Chain<T, Tag>;
+	using Element = typename ListType::Element;
+
+	ListType exact_size_slots[exact_size_slot_nb];
+	ListType bigger_sizes;
+	size_t stored_length = 0;
+
+	// T must have a length () method
+	void insert (T & element) {
+		size_t len = element.length ();
+		ASSERT_SAFE (len > 0);
+		if (len <= exact_size_slot_nb) {
+			exact_size_slots[len - 1].push_front (element);
+		} else {
+			// Insert it sorted in increasing length
+			for (auto & t : bigger_sizes) {
+				if (t.length () >= len) {
+					ListType::insert_before (element, t);
+					return;
+				}
+			}
+			bigger_sizes.push_back (element);
+		}
+		stored_length += len;
+	}
+	T * take (size_t min_len) {
+		ASSERT_SAFE (min_len > 0);
+		// Search in exact size slots
+		for (size_t n = min_len; n <= exact_size_slot_nb; ++n) {
+			if (T * t = exact_size_slots[n - 1].pop_front ()) {
+				stored_length -= n;
+				return t;
+			}
+		}
+		// Search in higher sizes list
+		for (auto & t : bigger_sizes) {
+			if (t.length () >= min_len) {
+				ListType::unlink (t);
+				stored_length -= t.length ();
+				return &t;
+			}
+		}
+		return nullptr;
+	}
+	void remove (T & t) noexcept {
+		stored_length -= t.length ();
+		ListType::unlink (t);
+	}
+	size_t length (void) const { return stored_length; }
 };
 
 #endif

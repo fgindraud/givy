@@ -1,6 +1,6 @@
 .PHONY: all clean disassemble
 
-CPPFLAGS = -std=c++14 -O3 -Wall
+CPPFLAGS = -std=c++14 -O3 -Wall -Wextra
 
 FILES = superpage_tracker.cpp assert_level.cpp
 

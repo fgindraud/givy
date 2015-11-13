@@ -10,51 +10,36 @@ void sep (void) { printf ("\n---------------------------------------------------
 
 int main (void) {
 	AllocParts::System alloc;
-	GasLayout layout (nullptr, 400 * VMem::SuperpageSize, 2);
+	GasLayout layout (nullptr, 400 * VMem::SuperpageSize, 1, 0);
 
 	SuperpageTracker tracker (layout, alloc);
 
 	sep ();
 	{
-		printf ("1 superpage_nb alloc on 2 nodes\n");
-		size_t s2 = tracker.acquire (1, 1);
-		size_t s3 = tracker.acquire (1, 1);
-		size_t s1 = tracker.acquire (1, 0);
-		tracker.print ();
-		printf ("%zu %zu %zu\n", s1, s2, s3);
-
-		printf ("Deallocation\n");
-		tracker.release (s1, 1);
-		tracker.release (s2, 1);
-		tracker.release (s3, 1);
-		tracker.print ();
-	}
-	sep ();
-	{
 		printf ("Mixed sized allocs\n");
-		size_t s1 = tracker.acquire (10, 0);
-		size_t s2 = tracker.acquire (20, 0);
-		size_t s3 = tracker.acquire (70, 0);
+		size_t s1 = tracker.acquire_num (10);
+		size_t s2 = tracker.acquire_num (20);
+		size_t s3 = tracker.acquire_num (70);
 		tracker.print ();
 		printf ("%zu %zu %zu\n", s1, s2, s3);
 
 		printf ("Partial deallocation\n");
-		tracker.release (s2, 20);
-		tracker.release (s1, 10);
+		tracker.release_num (s2, 20);
+		tracker.release_num (s1, 10);
 		tracker.print ();
 
 		printf ("Mixed alloc ; will fragment\n");
-		size_t s4 = tracker.acquire (15, 0);
-		size_t s5 = tracker.acquire (20, 0);
-		size_t s6 = tracker.acquire (10, 0);
+		size_t s4 = tracker.acquire_num (15);
+		size_t s5 = tracker.acquire_num (20);
+		size_t s6 = tracker.acquire_num (10);
 		tracker.print ();
 		printf ("%zu %zu %zu\n", s4, s5, s6);
 		
 		printf ("Deallocation\n");
-		tracker.release (s3, 70);
-		tracker.release (s4, 15);
-		tracker.release (s5, 20);
-		tracker.release (s6, 10);
+		tracker.release_num (s3, 70);
+		tracker.release_num (s4, 15);
+		tracker.release_num (s5, 20);
+		tracker.release_num (s6, 10);
 		tracker.print ();
 	}
 	sep ();
@@ -72,7 +57,7 @@ int main (void) {
 					wait_count--;
 					while (start == 0);
 					for (int j = 0; j < nb_alloc; ++j)
-						r[j] = tracker.acquire (10, 0);
+						r[j] = tracker.acquire_num (10);
 				},
 				&allocs[i * nb_alloc]);
 		while (wait_count);

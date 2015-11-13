@@ -110,7 +110,7 @@ void SuperpageTracker::clear_bits (Index loc_start, Index loc_end) {
 	}
 }
 
-size_t SuperpageTracker::acquire (size_t superpage_nb, int node) {
+size_t SuperpageTracker::acquire_num (size_t superpage_nb) {
 	/* I need to find a sequence of superpage_nb consecutive 0s anywhere in the table.
 	 * For now, I perform a linear search of the table, with some optimisation to prevent
 	 * using an atomic load twice on the same integer array cell if possible.
@@ -121,11 +121,9 @@ size_t SuperpageTracker::acquire (size_t superpage_nb, int node) {
 	 */
 	using std::memory_order::memory_order_seq_cst;
 	ASSERT_STD (superpage_nb > 0);
-	ASSERT_STD (node >= 0);
-	ASSERT_STD (node < layout.nb_node);
 
-	auto search_at = Index (layout.node_area_start_superpage_num (node));
-	auto search_end = Index (layout.node_area_end_superpage_num (node));
+	auto search_at = Index (layout.local_area_start_superpage_num ());
+	auto search_end = Index (layout.local_area_end_superpage_num ());
 	IntType c;
 	while (search_at < search_end) {
 		c = mapping_table[search_at.array_idx].load (memory_order_seq_cst);
@@ -199,7 +197,7 @@ continue_no_load:
 	throw std::runtime_error ("SuperpageTracker: no superpage sequence found");
 }
 
-void SuperpageTracker::release (size_t superpage_num, size_t superpage_nb) {
+void SuperpageTracker::release_num (size_t superpage_num, size_t superpage_nb) {
 	auto loc_start = Index (superpage_num);
 	auto loc_end = Index (superpage_num + superpage_nb);
 	ASSERT_STD (loc_start.array_idx < table_size);
