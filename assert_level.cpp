@@ -4,6 +4,7 @@
 #include <cstdio> // fprintf
 #include <cstdlib> // abort
 
+namespace Givy {
 namespace Assert {
 
 static std::atomic<HandlerType> current_handler (&abort_handler);
@@ -52,4 +53,5 @@ AssertException::AssertException (const Info & inf) : std::logic_error (inf.text
 	// TODO formatting
 }
 
+}
 }

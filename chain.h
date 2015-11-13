@@ -5,6 +5,8 @@
 
 #include "assert_level.h"
 
+namespace Givy {
+
 template <typename T, typename Tag = void> class ForwardChain {
 	/* Simple linked list with embedded elements.
 	 *
@@ -218,5 +220,6 @@ template <typename T, size_t exact_size_slot_nb> struct QuickList {
 	}
 	size_t length (void) const { return stored_length; }
 };
+}
 
 #endif

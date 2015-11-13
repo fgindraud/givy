@@ -4,21 +4,23 @@
 #include "assert_level.h"
 #include "superpage_tracker.h"
 
+namespace Givy {
+
 bool SuperpageTracker::set_mapping_bits (Index loc_start, IntType expected_start, Index loc_end, IntType expected_end) {
 	using std::memory_order::memory_order_seq_cst;
 
 	if (loc_start.array_idx == loc_end.array_idx) {
 		// One cell span
 		return mapping_table[loc_start.array_idx].compare_exchange_strong (
-				expected_start,
-				expected_start | BitArray::window_bound (loc_start.bit_idx, loc_end.bit_idx),
-				memory_order_seq_cst);
+		    expected_start, expected_start | BitArray::window_bound (loc_start.bit_idx, loc_end.bit_idx),
+		    memory_order_seq_cst);
 	} else {
 		/* Multicell span
 		 * Try to set bits (start, then middle, then end), revert to previous state on failure
 		 */
 		IntType loc_start_bits = BitArray::window_bound (loc_start.bit_idx, BitArray::Bits);
-		if (mapping_table[loc_start.array_idx].compare_exchange_strong (expected_start, expected_start | loc_start_bits, memory_order_seq_cst)) {
+		if (mapping_table[loc_start.array_idx].compare_exchange_strong (expected_start, expected_start | loc_start_bits,
+		                                                                memory_order_seq_cst)) {
 			size_t idx;
 			for (idx = loc_start.array_idx + 1; idx < loc_end.array_idx; ++idx) {
 				IntType expected = BitArray::zeros ();
@@ -30,7 +32,8 @@ bool SuperpageTracker::set_mapping_bits (Index loc_start, IntType expected_start
 				if (loc_end_bits == BitArray::zeros ()) {
 					return true; // Nothing to do, setting bits is already a success
 				} else {
-					if (mapping_table[loc_end.array_idx].compare_exchange_strong (expected_end, expected_end | loc_end_bits, memory_order_seq_cst))
+					if (mapping_table[loc_end.array_idx].compare_exchange_strong (expected_end, expected_end | loc_end_bits,
+					                                                              memory_order_seq_cst))
 						return true; // Success too
 				}
 			}
@@ -64,7 +67,8 @@ void SuperpageTracker::set_sequence_bits (Index loc_start, Index loc_end) {
 	}
 }
 
-bool SuperpageTracker::set_bits (Index loc_start, IntType expected_start, Index loc_end, IntType expected_end = BitArray::zeros ()) {
+bool SuperpageTracker::set_bits (Index loc_start, IntType expected_start, Index loc_end,
+                                 IntType expected_end = BitArray::zeros ()) {
 	if (set_mapping_bits (loc_start, expected_start, loc_end, expected_end)) {
 		// Mapping bits are always set first
 		set_sequence_bits (loc_start, loc_end);
@@ -84,7 +88,7 @@ void SuperpageTracker::clear_bits (Index loc_start, Index loc_end) {
 	 * sequence: 011..11
 	 */
 	using std::memory_order::memory_order_seq_cst;
-	
+
 	if (loc_start.array_idx == loc_end.array_idx) {
 		// One cell span
 		IntType bits = BitArray::window_bound (loc_start.bit_idx, loc_end.bit_idx);
@@ -101,7 +105,7 @@ void SuperpageTracker::clear_bits (Index loc_start, Index loc_end) {
 			sequence_table[i].store (BitArray::zeros (), memory_order_seq_cst);
 		if (last_cell_bits != BitArray::zeros ())
 			sequence_table[loc_end.array_idx].fetch_and (~last_cell_bits, memory_order_seq_cst);
-		
+
 		mapping_table[loc_start.array_idx].fetch_and (~first_cell_bits, memory_order_seq_cst);
 		for (size_t i = loc_start.array_idx + 1; i < loc_end.array_idx; i++)
 			mapping_table[i].store (BitArray::zeros (), memory_order_seq_cst);
@@ -127,7 +131,7 @@ size_t SuperpageTracker::acquire_num (size_t superpage_nb) {
 	IntType c;
 	while (search_at < search_end) {
 		c = mapping_table[search_at.array_idx].load (memory_order_seq_cst);
-continue_no_load:
+	continue_no_load:
 
 		if (c == BitArray::ones ()) {
 			// Completely full cell, skip
@@ -166,7 +170,7 @@ continue_no_load:
 			IntType last_cell_bits = BitArray::window_bound (0, loc_end.bit_idx);
 			if (!(loc_end < search_end))
 				break;
-			for (size_t idx = loc_start.array_idx + 1; idx < loc_end.array_idx ; ++idx) {
+			for (size_t idx = loc_start.array_idx + 1; idx < loc_end.array_idx; ++idx) {
 				c = mapping_table[idx].load (memory_order_seq_cst);
 				if (c != BitArray::zeros ()) {
 					// Zero sequence is not big enough ; restart search from this cell, no need to reload
@@ -216,7 +220,7 @@ void SuperpageTracker::print (int superpage_by_line) const {
 	for (size_t i = 0; i < nb_indicator; ++i) printf ("%-*zu", indicator_interval, i * indicator_interval);
 	printf ("\n%*c", line_prefix_size, ' ');
 	for (size_t i = 0; i < nb_indicator; ++i) printf ("/%*c", indicator_interval - 1, ' ');
-	
+
 	// Data
 	IntType m = 0;
 	IntType s = 0;
@@ -225,7 +229,7 @@ void SuperpageTracker::print (int superpage_by_line) const {
 		for (size_t sp = start; sp < layout.node_area_end_superpage_num (node); ++sp) {
 			if ((sp - start) % superpage_by_line == 0)
 				printf ("\n%-*zu", line_prefix_size, sp);
-			
+
 			auto idx = Index (sp);
 			if (idx.bit_idx == 0) {
 				m = mapping_table[idx.array_idx];
@@ -234,15 +238,19 @@ void SuperpageTracker::print (int superpage_by_line) const {
 
 			int c;
 			if (BitArray::is_set (m, idx.bit_idx)) {
-				if (BitArray::is_set (s, idx.bit_idx)) c = '=';
-				else c = '#';
+				if (BitArray::is_set (s, idx.bit_idx))
+					c = '=';
+				else
+					c = '#';
 			} else {
-				if (BitArray::is_set (s, idx.bit_idx)) c = '?';
-				else c = '_';
+				if (BitArray::is_set (s, idx.bit_idx))
+					c = '?';
+				else
+					c = '_';
 			}
 			printf ("%c", c);
 		}
 	}
 	printf ("\n");
 }
-
+}

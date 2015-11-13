@@ -5,6 +5,9 @@
 #include <tuple>
 
 #include "base_defs.h"
+#include "utility.h"
+
+namespace Givy {
 
 class SuperpageTracker {
 	/* Tracks the state of superpages.
@@ -34,10 +37,8 @@ public:
 	template <typename Alloc>
 	SuperpageTracker (const GasLayout & layout_, Alloc & allocator)
 	    : layout (layout_), table_size (Math::divide_up (layout.superpage_total, BitArray::Bits)) {
-		mapping_table =
-		    allocator.allocate (table_size * sizeof (AtomicIntType), alignof (AtomicIntType)).ptr;
-		sequence_table =
-		    allocator.allocate (table_size * sizeof (AtomicIntType), alignof (AtomicIntType)).ptr;
+		mapping_table = allocator.allocate (table_size * sizeof (AtomicIntType), alignof (AtomicIntType)).ptr;
+		sequence_table = allocator.allocate (table_size * sizeof (AtomicIntType), alignof (AtomicIntType)).ptr;
 		for (size_t it = 0; it < table_size; ++it) {
 			new (&mapping_table[it]) AtomicIntType (BitArray::zeros ());
 			new (&sequence_table[it]) AtomicIntType (BitArray::zeros ());
@@ -65,8 +66,7 @@ private:
 		size_t bit_idx;
 
 		Index (size_t array_idx_, size_t bit_idx_) : array_idx (array_idx_), bit_idx (bit_idx_) {}
-		explicit Index (size_t superpage_num_)
-		    : Index (superpage_num_ / BitArray::Bits, superpage_num_ % BitArray::Bits) {}
+		explicit Index (size_t superpage_num_) : Index (superpage_num_ / BitArray::Bits, superpage_num_ % BitArray::Bits) {}
 
 		size_t superpage_num (void) const { return array_idx * BitArray::Bits + bit_idx; }
 		void next_array_cell (void) {
@@ -78,11 +78,11 @@ private:
 		}
 	};
 
-	bool set_mapping_bits (Index loc_start, IntType expected_start, Index loc_end,
-	                       IntType expected_end);
+	bool set_mapping_bits (Index loc_start, IntType expected_start, Index loc_end, IntType expected_end);
 	void set_sequence_bits (Index loc_start, Index loc_end);
 	bool set_bits (Index loc_start, IntType expected_start, Index loc_end, IntType expected_end);
 	void clear_bits (Index loc_start, Index loc_end);
 };
+}
 
 #endif

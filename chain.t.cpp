@@ -2,6 +2,8 @@
 
 #include "chain.h"
 
+using namespace Givy;
+
 template<typename T, typename Tag>
 std::ostream & operator<< (std::ostream & os, ForwardChain<T, Tag> & chain) {
 	for (auto & it : chain)

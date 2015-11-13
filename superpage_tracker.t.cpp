@@ -4,13 +4,15 @@
 #include "alloc_parts.h"
 #include "superpage_tracker.h"
 
-void sep (void) { printf ("\n---------------------------------------------------------\n"); }
+using namespace Givy;
+namespace AllocParts = Allocator::Parts;
 
+void sep (void) { printf ("\n---------------------------------------------------------\n"); }
 
 
 int main (void) {
 	AllocParts::System alloc;
-	GasLayout layout (nullptr, 400 * VMem::SuperpageSize, 1, 0);
+	Givy::GasLayout layout (nullptr, 400 * VMem::SuperpageSize, 1, 0);
 
 	SuperpageTracker tracker (layout, alloc);
 

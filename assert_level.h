@@ -16,31 +16,32 @@
  * DISABLED epxands nothing (no assert code at all).
  * If multiple ASSERT_LEVEL_* are set, the highest in the DISABLED > SAFE > STD > OPT wins.
  */
-#if !(defined (ASSERT_LEVEL_SAFE) || defined (ASSERT_LEVEL_STD) || \
-		defined (ASSERT_LEVEL_OPT) || defined (ASSERT_LEVEL_DISABLED))
+#if !(defined(ASSERT_LEVEL_SAFE) || defined(ASSERT_LEVEL_STD) || defined(ASSERT_LEVEL_OPT) ||                          \
+      defined(ASSERT_LEVEL_DISABLED))
 #define ASSERT_LEVEL_STD
 #endif
 
-#if defined (ASSERT_LEVEL_SAFE) && !defined (ASSERT_LEVEL_DISABLED)
+#if defined(ASSERT_LEVEL_SAFE) && !defined(ASSERT_LEVEL_DISABLED)
 #define ASSERT_SAFE_ENABLED
 #endif
 
-#if (defined (ASSERT_LEVEL_SAFE) || defined (ASSERT_LEVEL_STD)) && !defined (ASSERT_LEVEL_DISABLED)
+#if (defined(ASSERT_LEVEL_SAFE) || defined(ASSERT_LEVEL_STD)) && !defined(ASSERT_LEVEL_DISABLED)
 #define ASSERT_STD_ENABLED
 #endif
 
-#if (defined (ASSERT_LEVEL_SAFE) || defined (ASSERT_LEVEL_STD) || defined (ASSERT_LEVEL_OPT)) \
-	&& !defined (ASSERT_LEVEL_DISABLED)
+#if (defined(ASSERT_LEVEL_SAFE) || defined(ASSERT_LEVEL_STD) || defined(ASSERT_LEVEL_OPT)) &&                          \
+    !defined(ASSERT_LEVEL_DISABLED)
 #define ASSERT_OPT_ENABLED
 #endif
 
 /* Internal ASSERT macro, and conditionnal definition of ASSERT_* macros
  */
-#define ASSERT_INTERNAL(cond) do { \
-	if (!(cond)) { \
-		Assert::invoke_handler ({#cond, __FILE__, __LINE__}); \
-	} \
-} while (false)
+#define ASSERT_INTERNAL(cond)                                                                                          \
+	do {                                                                                                                 \
+		if (!(cond)) {                                                                                                     \
+			Assert::invoke_handler ({#cond, __FILE__, __LINE__});                                                            \
+		}                                                                                                                  \
+	} while (false)
 
 #ifdef ASSERT_SAFE_ENABLED
 #define ASSERT_SAFE(cond) ASSERT_INTERNAL (cond)
@@ -64,6 +65,7 @@
  */
 #include <stdexcept> // logic_error
 
+namespace Givy {
 namespace Assert {
 	/* Structure with assert information
 	 */
@@ -77,7 +79,7 @@ namespace Assert {
 
 	/* Only one handler is alive at any point in time.
 	 * Modifiying the handler is thread safe.
-	 * 
+	 *
 	 * set_handler returns the old handler.
 	 */
 	HandlerType get_handler (void);
@@ -91,11 +93,12 @@ namespace Assert {
 	void abort_handler (const Info & inf);
 	void throw_handler (const Info & inf);
 	// Also sleep handler
-	
+
 	class AssertException : public std::logic_error {
-		public:
-			AssertException (const Info & inf);
+	public:
+		AssertException (const Info & inf);
 	};
+}
 }
 
 #endif
