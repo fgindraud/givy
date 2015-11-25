@@ -101,4 +101,13 @@ namespace Assert {
 }
 }
 
+/* Debug messages
+ */
+#include <cstdio>
+#if 0
+#define DEBUG_TEXT(...) fprintf (stderr, __VA_ARGS__)
+#else
+#define DEBUG_TEXT(...)
+#endif
+
 #endif

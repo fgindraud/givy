@@ -3,6 +3,7 @@
 
 #include <system_error> // mmap/munmap error exceptions
 #include <cerrno>
+#include <memory>
 
 // system specific
 #include <sys/mman.h>
@@ -12,6 +13,55 @@
 #include "assert_level.h"
 
 namespace Givy {
+
+/* ------------------------ Array ----------------------- */
+
+template <typename T, typename Alloc> class FixedArray {
+	/* Dynamic non-resizable array supporting custom allocators
+	 */
+private:
+	Alloc & allocator;
+	size_t nb_cells;
+	Block memory;
+
+	T * array (void) { return memory.ptr.as<T *> (); }
+	const T * array (void) const { return memory.ptr.as<const T *> (); }
+
+public:
+	template <typename... Args>
+	FixedArray (size_t size_, Alloc & allocator_, Args &&... args)
+	    : allocator (allocator_), nb_cells (size_) {
+		// Allocate
+		ASSERT_STD (size_ > 0);
+		memory = allocator.allocate (nb_cells * sizeof (T), alignof (T));
+		ASSERT_STD (memory.ptr != nullptr);
+
+		// Construct
+		for (size_t i = 0; i < size (); ++i) new (&(array ()[i])) T (args...);
+	}
+	~FixedArray () {
+		// Destruct
+		for (size_t i = 0; i < size (); ++i) array ()[i].~T ();
+
+		// Deallocate
+		allocator.deallocate (memory);
+	}
+
+	FixedArray (const FixedArray &) = delete;
+	FixedArray & operator=(const FixedArray &) = delete;
+	FixedArray (FixedArray &&) = delete;
+	FixedArray & operator=(FixedArray &&) = delete;
+
+	size_t size (void) const { return nb_cells; }
+	const T & operator[](size_t i) const {
+		ASSERT_SAFE (i < size ());
+		return array ()[i];
+	}
+	T & operator[](size_t i) {
+		ASSERT_SAFE (i < size ());
+		return array ()[i];
+	}
+};
 
 /* ------------------------ BitMask management -------------------- */
 
@@ -118,7 +168,8 @@ template <> constexpr size_t BitMask<unsigned long>::count_msb_zeros (unsigned l
 		b = __builtin_clzl (c);
 	return b;
 }
-template <> constexpr size_t BitMask<unsigned long long>::count_msb_zeros (unsigned long long c) noexcept {
+template <>
+constexpr size_t BitMask<unsigned long long>::count_msb_zeros (unsigned long long c) noexcept {
 	size_t b = Bits;
 	if (c != 0)
 		b = __builtin_clzll (c);
@@ -136,7 +187,8 @@ template <> constexpr size_t BitMask<unsigned long>::count_lsb_zeros (unsigned l
 		b = __builtin_ctzl (c);
 	return b;
 }
-template <> constexpr size_t BitMask<unsigned long long>::count_lsb_zeros (unsigned long long c) noexcept {
+template <>
+constexpr size_t BitMask<unsigned long long>::count_lsb_zeros (unsigned long long c) noexcept {
 	size_t b = Bits;
 	if (c != 0)
 		b = __builtin_ctzll (c);
@@ -148,7 +200,8 @@ template <> constexpr size_t BitMask<unsigned int>::count_zeros (unsigned int c)
 template <> constexpr size_t BitMask<unsigned long>::count_zeros (unsigned long c) noexcept {
 	return Bits - __builtin_popcountl (c);
 }
-template <> constexpr size_t BitMask<unsigned long long>::count_zeros (unsigned long long c) noexcept {
+template <>
+constexpr size_t BitMask<unsigned long long>::count_zeros (unsigned long long c) noexcept {
 	return Bits - __builtin_popcountll (c);
 }
 #endif // GCC or Clang
@@ -157,14 +210,16 @@ template <> constexpr size_t BitMask<unsigned long long>::count_zeros (unsigned 
 
 namespace VMem {
 	static inline int map_noexcept (Ptr page_start, size_t size) noexcept {
-		void * p =
-		    mmap (page_start, size, PROT_READ | PROT_WRITE | PROT_EXEC, MAP_PRIVATE | MAP_ANONYMOUS | MAP_FIXED, -1, 0);
+		void * p = mmap (page_start, size, PROT_READ | PROT_WRITE | PROT_EXEC,
+		                 MAP_PRIVATE | MAP_ANONYMOUS | MAP_FIXED, -1, 0);
 		if (p == MAP_FAILED || p != page_start)
 			return -1;
 		else
 			return 0;
 	}
-	static inline int unmap_noexcept (Ptr page_start, size_t size) noexcept { return munmap (page_start, size); }
+	static inline int unmap_noexcept (Ptr page_start, size_t size) noexcept {
+		return munmap (page_start, size);
+	}
 	static inline int discard_noexcept (Ptr page_start, size_t size) noexcept {
 		return madvise (page_start, size, MADV_DONTNEED);
 	}

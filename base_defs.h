@@ -91,9 +91,11 @@ constexpr bool operator!=(Ptr lhs, Ptr rhs) noexcept {
 
 /* ----------------------------------- Memory block ------------------------------- */
 
+/* Basic type to represent a piece of memory (ptr and size).
+ */
 struct Block {
-	Ptr ptr;
-	size_t size;
+	Ptr ptr = nullptr;
+	size_t size = 0;
 };
 
 /* ------------------------------ Low level memory management ---------------------- */

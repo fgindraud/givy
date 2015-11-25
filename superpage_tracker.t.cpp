@@ -5,16 +5,21 @@
 #include "superpage_tracker.h"
 
 using namespace Givy;
-namespace AllocParts = Allocator::Parts;
 
-void sep (void) { printf ("\n---------------------------------------------------------\n"); }
+void sep (void) {
+	printf ("\n---------------------------------------------------------\n");
+}
 
+struct SystemAlloc {
+	// For testing only...
+	Block allocate (size_t size, size_t) { return {Ptr (new char[size]), size}; }
+	void deallocate (Block blk) { delete[] blk.ptr.as<char *> (); }
+};
 
 int main (void) {
-	AllocParts::System alloc;
-	Givy::GasLayout layout (nullptr, 400 * VMem::SuperpageSize, 1, 0);
-
-	SuperpageTracker tracker (layout, alloc);
+	SystemAlloc alloc;
+	GasLayout layout (nullptr, 400 * VMem::SuperpageSize, 1, 0);
+	Allocator::SuperpageTracker<SystemAlloc> tracker (layout, alloc);
 
 	sep ();
 	{
@@ -36,7 +41,7 @@ int main (void) {
 		size_t s6 = tracker.acquire_num (10);
 		tracker.print ();
 		printf ("%zu %zu %zu\n", s4, s5, s6);
-		
+
 		printf ("Deallocation\n");
 		tracker.release_num (s3, 70);
 		tracker.release_num (s4, 15);
@@ -49,26 +54,23 @@ int main (void) {
 		int nb_th = 4;
 		int nb_alloc = 10;
 		size_t allocs[nb_th * nb_alloc];
-		
+
 		std::thread threads[nb_th];
 		std::atomic<int> start (0), wait_count (nb_th);
 
 		for (int i = 0; i < nb_th; ++i)
-			threads[i] = std::thread (
-				[&] (size_t *r) {
-					wait_count--;
-					while (start == 0);
-					for (int j = 0; j < nb_alloc; ++j)
-						r[j] = tracker.acquire_num (10);
-				},
-				&allocs[i * nb_alloc]);
-		while (wait_count);
+			threads[i] = std::thread ([&](size_t * r) {
+				wait_count--;
+				while (start == 0)
+					;
+				for (int j = 0; j < nb_alloc; ++j) r[j] = tracker.acquire_num (10);
+			}, &allocs[i * nb_alloc]);
+		while (wait_count)
+			;
 		start = 1;
-		for (int i = 0; i < nb_th; ++i)
-			threads[i].join ();
+		for (int i = 0; i < nb_th; ++i) threads[i].join ();
 		for (int j = 0; j < nb_th; ++j) {
-			for (int i = 0; i < nb_alloc; ++i)
-				printf ("%zu ", allocs[j * nb_alloc + i]);
+			for (int i = 0; i < nb_alloc; ++i) printf ("%zu ", allocs[j * nb_alloc + i]);
 			printf ("\n");
 		}
 		tracker.print ();
@@ -77,4 +79,3 @@ int main (void) {
 
 	return 0;
 }
-
