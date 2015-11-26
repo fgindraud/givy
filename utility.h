@@ -24,8 +24,8 @@ private:
 	size_t nb_cells;
 	Block memory;
 
-	T * array (void) { return memory.ptr.as<T *> (); }
-	const T * array (void) const { return memory.ptr.as<const T *> (); }
+	T * array (void) { return memory.ptr; }
+	const T * array (void) const { return memory.ptr; }
 
 public:
 	template <typename... Args>
@@ -37,11 +37,13 @@ public:
 		ASSERT_STD (memory.ptr != nullptr);
 
 		// Construct
-		for (size_t i = 0; i < size (); ++i) new (&(array ()[i])) T (args...);
+		for (size_t i = 0; i < size (); ++i)
+			new (&(array ()[i])) T (args...);
 	}
 	~FixedArray () {
 		// Destruct
-		for (size_t i = 0; i < size (); ++i) array ()[i].~T ();
+		for (size_t i = 0; i < size (); ++i)
+			array ()[i].~T ();
 
 		// Deallocate
 		allocator.deallocate (memory);
@@ -79,6 +81,7 @@ template <typename IntType> struct BitMask {
 	static constexpr IntType one (void) noexcept { return 0x1; }
 
 	static constexpr IntType lsb_ones (size_t nb) noexcept {
+		ASSERT_SAFE (nb <= Bits);
 		// nb 1s followed by 0s
 		if (nb == 0)
 			return 0;
@@ -86,6 +89,7 @@ template <typename IntType> struct BitMask {
 			return ones () >> (Bits - nb);
 	}
 	static constexpr IntType msb_ones (size_t nb) noexcept {
+		ASSERT_SAFE (nb <= Bits);
 		// 0s followed by nb 1s
 		if (nb == 0)
 			return 0;
@@ -142,13 +146,25 @@ template <typename IntType> struct BitMask {
 				b++;
 		return b;
 	}
+	static constexpr size_t count_msb_ones (IntType c) noexcept { return count_msb_zeros (~c); }
+	static constexpr size_t find_previous_zero (IntType c, size_t pos) noexcept {
+		ASSERT_SAFE (pos < Bits);
+		// Find index of first zero before 'pos' position (included)
+		// Returns Bits if not found
+		c <<= (Bits - 1) - pos; // Shift so that 'pos' bit is now the msb
+		size_t distance_to_prev_zero = count_msb_ones (c);
+		if (distance_to_prev_zero > pos)
+			return Bits;
+		else
+			return pos - distance_to_prev_zero;
+	}
 
 	static const char * str (IntType c) {
 		// Use with caution, unsafe buffer
 		static char buffer[Bits + 1] = {'\0'};
 		for (size_t i = 0; i < Bits; ++i) {
 			buffer[i] = (IntType (0x1) & c) ? '1' : '0';
-			c <<= 1;
+			c >>= 1;
 		}
 		return buffer;
 	}

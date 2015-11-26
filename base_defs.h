@@ -45,7 +45,8 @@ struct Ptr {
 
 	explicit constexpr Ptr (uintptr_t ptr) noexcept : p (ptr) {}
 	constexpr Ptr (std::nullptr_t) noexcept : p (0) {}
-	template <typename T> explicit constexpr Ptr (T * ptr) noexcept : p (reinterpret_cast<uintptr_t> (ptr)) {}
+	template <typename T>
+	explicit constexpr Ptr (T * ptr) noexcept : p (reinterpret_cast<uintptr_t> (ptr)) {}
 
 	template <typename T> constexpr T as (void) const noexcept { return reinterpret_cast<T> (p); }
 	template <typename T> constexpr operator T *(void) const noexcept { return as<T *> (); }
@@ -96,6 +97,8 @@ constexpr bool operator!=(Ptr lhs, Ptr rhs) noexcept {
 struct Block {
 	Ptr ptr = nullptr;
 	size_t size = 0;
+
+	bool contains (Ptr p) { return ptr <= p && p < ptr + size; }
 };
 
 /* ------------------------------ Low level memory management ---------------------- */
@@ -120,6 +123,10 @@ namespace VMem {
 /* --------------------------- Global address space memory layout --------------------- */
 
 struct GasLayout {
+	/* Layout of GAS :
+	 * - before start pointer, growing backward, small basic dynaùmic structures (bootstrap allocator)
+	 * - starting from start pointer, nb_node areas of superpage_by_node superpages
+	 */
 	const Ptr start;
 	const size_t space_by_node;
 	const int nb_node;
@@ -128,23 +135,40 @@ struct GasLayout {
 	const size_t superpage_by_node;
 	const size_t superpage_total;
 
+	const Ptr local_area_start;
+	const Ptr local_area_end;
+
 	GasLayout (Ptr start_, size_t space_by_node_, int nb_node_, int local_node_)
 	    : start (Ptr (start_).align_up (VMem::SuperpageSize)),
-	      space_by_node (Math::align_up (space_by_node_, VMem::SuperpageSize)), nb_node (nb_node_),
+	      space_by_node (Math::align_up (space_by_node_, VMem::SuperpageSize)),
+	      nb_node (nb_node_),
 	      local_node (local_node_),
 	      // derived
 	      superpage_by_node (Math::divide_up (space_by_node_, VMem::SuperpageSize)),
-	      superpage_total (superpage_by_node * nb_node) {
+	      superpage_total (superpage_by_node * nb_node),
+	      local_area_start (superpage (local_area_start_superpage_num ())),
+	      local_area_end (superpage (local_area_end_superpage_num ())) {
 		ASSERT_STD (nb_node_ > 0);
 	}
 
-	Ptr superpage (size_t num) const { return start + VMem::SuperpageSize * num; }
-	size_t superpage (Ptr inside) const { return inside.sub (start) / VMem::SuperpageSize; }
-
+	/* Get boundaries of node memory areas.
+	 * This is in superpage number (index from the first superpage at start pointer).
+	 */
 	size_t node_area_start_superpage_num (int node) const { return superpage_by_node * node; }
-	size_t node_area_end_superpage_num (int node) const { return node_area_start_superpage_num (node + 1); }
-	size_t local_area_start_superpage_num () const { return node_area_start_superpage_num (local_node); }
+	size_t node_area_end_superpage_num (int node) const {
+		return node_area_start_superpage_num (node + 1);
+	}
+	size_t local_area_start_superpage_num () const {
+		return node_area_start_superpage_num (local_node);
+	}
 	size_t local_area_end_superpage_num () const { return node_area_end_superpage_num (local_node); }
+	int area_index (Ptr ptr) const { return superpage_num (ptr) / superpage_by_node; }
+	bool in_local_area (Ptr ptr) const { return local_area_start <= ptr && ptr < local_area_end; }
+
+	/* Conversion between pointer and superpage number.
+	 */
+	Ptr superpage (size_t num) const { return start + VMem::SuperpageSize * num; }
+	size_t superpage_num (Ptr inside) const { return inside.sub (start) / VMem::SuperpageSize; }
 };
 }
 

@@ -18,11 +18,12 @@ struct SystemAlloc {
 
 int main (void) {
 	SystemAlloc alloc;
-	GasLayout layout (nullptr, 400 * VMem::SuperpageSize, 1, 0);
+	GasLayout layout (nullptr, 500 * VMem::SuperpageSize, 1, 0);
 	Allocator::SuperpageTracker<SystemAlloc> tracker (layout, alloc);
 
 	sep ();
 	{
+		// Check layouts
 		printf ("Mixed sized allocs\n");
 		size_t s1 = tracker.acquire_num (10);
 		size_t s2 = tracker.acquire_num (20);
@@ -35,6 +36,7 @@ int main (void) {
 		tracker.release_num (s1, 10);
 		tracker.print ();
 
+		// Check allocation in fragmented area
 		printf ("Mixed alloc ; will fragment\n");
 		size_t s4 = tracker.acquire_num (15);
 		size_t s5 = tracker.acquire_num (20);
@@ -42,6 +44,11 @@ int main (void) {
 		tracker.print ();
 		printf ("%zu %zu %zu\n", s4, s5, s6);
 
+		// Check results of header finding
+		for (size_t s = 0; s < 100; s += 10)
+			printf ("Header of %zu = %zu\n", s, tracker.get_block_start_num (s));
+
+		// Test clean deallocation
 		printf ("Deallocation\n");
 		tracker.release_num (s3, 70);
 		tracker.release_num (s4, 15);
@@ -51,6 +58,7 @@ int main (void) {
 	}
 	sep ();
 	{
+		// Test parallel modifications (may fail spuriously if too much contention)
 		int nb_th = 4;
 		int nb_alloc = 10;
 		size_t allocs[nb_th * nb_alloc];
