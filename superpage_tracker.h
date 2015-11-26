@@ -62,9 +62,8 @@ namespace Allocator {
 		}
 
 		bool is_mapped (size_t superpage_num) const {
-			using std::memory_order::memory_order_seq_cst;
 			auto loc = Index (superpage_num);
-			IntType c = mapping_table[loc.array_idx].load (memory_order_seq_cst);
+			IntType c = mapping_table[loc.array_idx].load (std::memory_order_seq_cst);
 			return BitArray::is_set (c, loc.bit_idx);
 		}
 		bool is_mapped (Ptr ptr) const { return is_mapped (layout.superpage_num (ptr)); }
@@ -118,14 +117,13 @@ namespace Allocator {
 		 * Search starts at the start of the node-local virtual addresses segment.
 		 * search_at.bit_idx is taken into account if search starts in the middle of a cell.
 		 */
-		using std::memory_order::memory_order_seq_cst;
 		ASSERT_STD (superpage_nb > 0);
 
 		auto search_at = Index (layout.local_area_start_superpage_num ());
 		auto search_end = Index (layout.local_area_end_superpage_num ());
 		IntType c;
 		while (search_at < search_end) {
-			c = mapping_table[search_at.array_idx].load (memory_order_seq_cst);
+			c = mapping_table[search_at.array_idx].load (std::memory_order_seq_cst);
 		continue_no_load:
 
 			if (c == BitArray::ones ()) {
@@ -169,7 +167,7 @@ namespace Allocator {
 				if (!(loc_end < search_end))
 					break;
 				for (size_t idx = loc_start.array_idx + 1; idx < loc_end.array_idx; ++idx) {
-					c = mapping_table[idx].load (memory_order_seq_cst);
+					c = mapping_table[idx].load (std::memory_order_seq_cst);
 					if (c != BitArray::zeros ()) {
 						// Zero sequence is not big enough ; restart search from this cell, no need to reload
 						search_at = Index (idx, 0);
@@ -177,7 +175,7 @@ namespace Allocator {
 					}
 				}
 				if (last_cell_bits != BitArray::zeros ()) {
-					c = mapping_table[loc_end.array_idx].load (memory_order_seq_cst);
+					c = mapping_table[loc_end.array_idx].load (std::memory_order_seq_cst);
 					if ((c & last_cell_bits) != BitArray::zeros ()) {
 						// Sequence not big enough, restart from this cell, no need to reload
 						search_at = loc_end;
@@ -214,11 +212,10 @@ namespace Allocator {
 		/* Find the first 0 in the sequence_table, looking backward from the starting position.
 		 * Note that it won't check if the superpages are in the mapped table.
 		 */
-		using std::memory_order::memory_order_seq_cst;
 		auto loc = Index (superpage_num);
 		ASSERT_STD (loc.array_idx < table_size);
 		while (true) {
-			IntType c = sequence_table[loc.array_idx].load (memory_order_seq_cst);
+			IntType c = sequence_table[loc.array_idx].load (std::memory_order_seq_cst);
 			// Try to find preceeding zero
 			size_t prev_zero = BitArray::find_previous_zero (c, loc.bit_idx);
 			if (prev_zero != BitArray::Bits)
@@ -231,26 +228,24 @@ namespace Allocator {
 	template <typename Alloc>
 	bool SuperpageTracker<Alloc>::set_mapping_bits (Index loc_start, IntType expected_start,
 	                                                Index loc_end, IntType expected_end) {
-		using std::memory_order::memory_order_seq_cst;
-
 		if (loc_start.array_idx == loc_end.array_idx) {
 			// One cell span
 			return mapping_table[loc_start.array_idx].compare_exchange_strong (
 			    expected_start,
 			    expected_start | BitArray::window_bound (loc_start.bit_idx, loc_end.bit_idx),
-			    memory_order_seq_cst);
+			    std::memory_order_seq_cst);
 		} else {
 			/* Multicell span
 			 * Try to set bits (start, then middle, then end), revert to previous state on failure
 			 */
 			IntType loc_start_bits = BitArray::window_bound (loc_start.bit_idx, BitArray::Bits);
 			if (mapping_table[loc_start.array_idx].compare_exchange_strong (
-			        expected_start, expected_start | loc_start_bits, memory_order_seq_cst)) {
+			        expected_start, expected_start | loc_start_bits, std::memory_order_seq_cst)) {
 				size_t idx;
 				for (idx = loc_start.array_idx + 1; idx < loc_end.array_idx; ++idx) {
 					IntType expected = BitArray::zeros ();
 					if (!mapping_table[idx].compare_exchange_strong (expected, BitArray::ones (),
-					                                                 memory_order_seq_cst))
+					                                                 std::memory_order_seq_cst))
 						break;
 				}
 				if (idx == loc_end.array_idx) {
@@ -259,14 +254,14 @@ namespace Allocator {
 						return true; // Nothing to do, setting bits is already a success
 					} else {
 						if (mapping_table[loc_end.array_idx].compare_exchange_strong (
-						        expected_end, expected_end | loc_end_bits, memory_order_seq_cst))
+						        expected_end, expected_end | loc_end_bits, std::memory_order_seq_cst))
 							return true; // Success too
 					}
 				}
 				// Cleanup on failure
 				for (size_t clean_idx = loc_start.array_idx + 1; clean_idx < idx; ++clean_idx)
-					mapping_table[clean_idx].store (BitArray::zeros (), memory_order_seq_cst);
-				mapping_table[loc_start.array_idx].fetch_and (~loc_start_bits, memory_order_seq_cst);
+					mapping_table[clean_idx].store (BitArray::zeros (), std::memory_order_seq_cst);
+				mapping_table[loc_start.array_idx].fetch_and (~loc_start_bits, std::memory_order_seq_cst);
 			}
 			return false;
 		}
@@ -274,24 +269,23 @@ namespace Allocator {
 
 	template <typename Alloc>
 	void SuperpageTracker<Alloc>::set_sequence_bits (Index loc_start, Index loc_end) {
-		using std::memory_order::memory_order_seq_cst;
 		// No need to compare_exchange ; we are supposed to own the sequence bits as we reserved the
 		// area through mapping bits
 		if (loc_start.array_idx == loc_end.array_idx) {
 			// One cell span
 			IntType bits = BitArray::window_bound (loc_start.bit_idx + 1, loc_end.bit_idx);
 			if (bits != BitArray::zeros ())
-				sequence_table[loc_start.array_idx].fetch_or (bits, memory_order_seq_cst);
+				sequence_table[loc_start.array_idx].fetch_or (bits, std::memory_order_seq_cst);
 		} else {
 			// Multiple cell span
 			IntType first_cell_bits = BitArray::window_bound (loc_start.bit_idx + 1, BitArray::Bits);
 			IntType last_cell_bits = BitArray::window_bound (0, loc_end.bit_idx);
 
-			sequence_table[loc_start.array_idx].fetch_or (first_cell_bits, memory_order_seq_cst);
+			sequence_table[loc_start.array_idx].fetch_or (first_cell_bits, std::memory_order_seq_cst);
 			for (size_t i = loc_start.array_idx + 1; i < loc_end.array_idx; i++)
-				sequence_table[i].store (BitArray::ones (), memory_order_seq_cst);
+				sequence_table[i].store (BitArray::ones (), std::memory_order_seq_cst);
 			if (last_cell_bits != BitArray::zeros ())
-				sequence_table[loc_end.array_idx].fetch_or (last_cell_bits, memory_order_seq_cst);
+				sequence_table[loc_end.array_idx].fetch_or (last_cell_bits, std::memory_order_seq_cst);
 		}
 	}
 
@@ -317,30 +311,28 @@ namespace Allocator {
 		 * mapping:  111..11
 		 * sequence: 011..11
 		 */
-		using std::memory_order::memory_order_seq_cst;
-
 		if (loc_start.array_idx == loc_end.array_idx) {
 			// One cell span
 			IntType bits = BitArray::window_bound (loc_start.bit_idx, loc_end.bit_idx);
 			if (loc_end.bit_idx - loc_start.bit_idx > 1)
-				sequence_table[loc_start.array_idx].fetch_and (~bits, memory_order_seq_cst);
-			mapping_table[loc_start.array_idx].fetch_and (~bits, memory_order_seq_cst);
+				sequence_table[loc_start.array_idx].fetch_and (~bits, std::memory_order_seq_cst);
+			mapping_table[loc_start.array_idx].fetch_and (~bits, std::memory_order_seq_cst);
 		} else {
 			// Multiple cells span
 			IntType first_cell_bits = BitArray::window_bound (loc_start.bit_idx, BitArray::Bits);
 			IntType last_cell_bits = BitArray::window_bound (0, loc_end.bit_idx);
 
-			sequence_table[loc_start.array_idx].fetch_and (~first_cell_bits, memory_order_seq_cst);
+			sequence_table[loc_start.array_idx].fetch_and (~first_cell_bits, std::memory_order_seq_cst);
 			for (size_t i = loc_start.array_idx + 1; i < loc_end.array_idx; i++)
-				sequence_table[i].store (BitArray::zeros (), memory_order_seq_cst);
+				sequence_table[i].store (BitArray::zeros (), std::memory_order_seq_cst);
 			if (last_cell_bits != BitArray::zeros ())
-				sequence_table[loc_end.array_idx].fetch_and (~last_cell_bits, memory_order_seq_cst);
+				sequence_table[loc_end.array_idx].fetch_and (~last_cell_bits, std::memory_order_seq_cst);
 
-			mapping_table[loc_start.array_idx].fetch_and (~first_cell_bits, memory_order_seq_cst);
+			mapping_table[loc_start.array_idx].fetch_and (~first_cell_bits, std::memory_order_seq_cst);
 			for (size_t i = loc_start.array_idx + 1; i < loc_end.array_idx; i++)
-				mapping_table[i].store (BitArray::zeros (), memory_order_seq_cst);
+				mapping_table[i].store (BitArray::zeros (), std::memory_order_seq_cst);
 			if (last_cell_bits != BitArray::zeros ())
-				mapping_table[loc_end.array_idx].fetch_and (~last_cell_bits, memory_order_seq_cst);
+				mapping_table[loc_end.array_idx].fetch_and (~last_cell_bits, std::memory_order_seq_cst);
 		}
 	}
 

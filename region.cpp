@@ -26,6 +26,9 @@ namespace Allocator {
 	struct MainHeap;
 	using PageBlockUnusedList = QuickList<PageBlockHeader, 10>;
 
+	struct UnusedBlock : public ForwardChain<UnusedBlock>::Element {};
+	using ThreadRemoteFreeList = ForwardChain<UnusedBlock>::Atomic;
+
 	struct PageBlockHeader : public PageBlockUnusedList::Element {
 		MemoryType type;
 		size_t block_page_nb = 0;
@@ -114,11 +117,12 @@ namespace Allocator {
 	private:
 		MainHeap & main_heap;
 		Chain<SuperpageBlock> superpage_blocks;
+		ThreadRemoteFreeList remote_freed_blocks;
 
 	public:
 		/* Constructors and destructors are called on thread creation / destruction due to the use of
-		 * ThreadLocalHeap as a
-		 * global threal_local variable.
+		 * ThreadLocalHeap as a global threal_local variable.
+		 * A copy constructor is required by threal_local.
 		 */
 		ThreadLocalHeap (MainHeap & main_heap_);
 		~ThreadLocalHeap ();
@@ -131,10 +135,11 @@ namespace Allocator {
 
 	private:
 		void thread_local_deallocate (Ptr ptr, SuperpageBlock & spb);
+		void process_thread_remote_frees (void);
 	};
 
 	namespace Thresholds {
-		const size_t Smallest = sizeof (void *); // TODO ?
+		const size_t Smallest = sizeof (UnusedBlock);
 		const size_t SmallMedium = VMem::PageSize; // TODO
 		const size_t MediumHigh = SuperpageBlock::ContainedAllocMaxPages * VMem::PageSize;
 	}
@@ -281,6 +286,7 @@ namespace Allocator {
 	ThreadLocalHeap::ThreadLocalHeap (MainHeap & main_heap_) : main_heap (main_heap_) {
 		DEBUG_TEXT ("TLH created = %p\n", this);
 	}
+
 	ThreadLocalHeap::~ThreadLocalHeap () {
 		DEBUG_TEXT ("TLH destroyed = %p\n", this);
 
@@ -291,6 +297,7 @@ namespace Allocator {
 	}
 
 	Block ThreadLocalHeap::allocate (size_t size, size_t align) {
+		process_thread_remote_frees (); // TODO call less often
 		(void) align; // FIXME Alignement unsupported now
 		if (size < Thresholds::SmallMedium) {
 			// Small alloc
@@ -325,6 +332,8 @@ namespace Allocator {
 		if (!main_heap.layout.in_local_area (ptr))
 			return; // TODO node_remote free
 
+		process_thread_remote_frees (); // TODO call less often
+
 		SuperpageBlock & spb = main_heap.containing_superpage_block (ptr);
 		ThreadLocalHeap * owner = spb.owner ();
 
@@ -341,7 +350,12 @@ namespace Allocator {
 			thread_local_deallocate (ptr, spb);
 		} else {
 			// Node local Remote Thread deallocation
-			// TODO
+
+			/* TODO for now, just push on a single remote freelist.
+			 * The block is guaranteed to fit at least a UnusedBlock freelist link.
+			 */
+			UnusedBlock * blk = new (ptr) UnusedBlock;
+			owner->remote_freed_blocks.push (*blk);
 		}
 	}
 
@@ -359,6 +373,16 @@ namespace Allocator {
 			} else {
 				// Unreachable
 			}
+		}
+	}
+
+	void ThreadLocalHeap::process_thread_remote_frees (void) {
+		ForwardChain<UnusedBlock> unused_blocks = remote_freed_blocks.take_all ();
+		for (auto it = unused_blocks.begin (); it != unused_blocks.end ();) {
+			Ptr ptr {& (*it)};
+			it++; // Get next element before destroying the current element
+			SuperpageBlock & spb = main_heap.containing_superpage_block (ptr);
+			thread_local_deallocate (ptr, spb);
 		}
 	}
 }
@@ -398,7 +422,7 @@ int main (void) {
 	namespace G = Givy::Allocator::GlobalInstance;
 
 	auto p = G::allocate (0xF356, 1);
-	std::cout << p.ptr.as<void*> () << " " << p.size << std::endl;
+	std::cout << p.ptr.as<void *> () << " " << p.size << std::endl;
 	*p.ptr.as<int *> () = 42;
 	G::deallocate (p.ptr);
 	return 0;

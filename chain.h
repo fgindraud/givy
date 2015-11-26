@@ -2,62 +2,11 @@
 #define CHAIN_H
 
 #include <iterator>
+#include <atomic>
 
 #include "assert_level.h"
 
 namespace Givy {
-
-template <typename T, typename Tag = void> class ForwardChain {
-	/* Simple linked list with embedded elements.
-	 *
-	 * Any struct that wants to be added to the list must inherit from Element.
-	 * Tag allows a T object to participate in multiple lists (differentiate the type).
-	 */
-public:
-	struct Element {
-		Element * next;
-	};
-
-private:
-	Element * head = nullptr;
-
-public:
-	T * pop (void) noexcept {
-		T * r = static_cast<T *> (head);
-		if (head != nullptr)
-			head = head->next;
-		return r;
-	}
-	void push (T & t) noexcept {
-		Element & e = t;
-		e.next = head;
-		head = &e;
-	}
-
-	class iterator : public std::iterator<std::forward_iterator_tag, T> {
-	private:
-		Element * current;
-
-	public:
-		// default construction is equivalent to a end ptr.
-		iterator (Element * p = nullptr) noexcept : current (p) {}
-		bool operator==(iterator other) noexcept { return current == other.current; }
-		bool operator!=(iterator other) noexcept { return current != other.current; }
-		iterator & operator++(void) noexcept {
-			current = current->next;
-			return *this;
-		}
-		iterator operator++(int) noexcept {
-			auto cpy = *this;
-			++*this;
-			return cpy;
-		}
-		T & operator*(void) noexcept { return *static_cast<T *> (current); }
-	};
-
-	iterator begin (void) noexcept { return {head}; }
-	iterator end (void) noexcept { return {}; }
-};
 
 template <typename T, typename Tag = void> class Chain {
 	/* Double linked list using embedded elements.
@@ -169,6 +118,13 @@ private:
 };
 
 template <typename T, size_t exact_size_slot_nb> struct QuickList {
+	/* Quicklist is used to quickly find an element with a specific attribute.
+	 * It uses a set of lists, that each store elements if their length() property has the same value
+	 * as the list's value.
+	 * The set of list is fixed, and is composed of exact_size_slot_nb lists for lengths from 1 to
+	 * exact_size_slot_nb, plus another one (always sorted in increasing order) for all bigger
+	 * lengths.
+	 */
 	struct Tag; // Custom tag for Chain
 	using ListType = Chain<T, Tag>;
 	using Element = typename ListType::Element;
@@ -219,6 +175,85 @@ template <typename T, size_t exact_size_slot_nb> struct QuickList {
 		ListType::unlink (t);
 	}
 	size_t length (void) const { return stored_length; }
+};
+
+template <typename T, typename Tag = void> class ForwardChain {
+	/* Simple linked list with embedded elements.
+	 *
+	 * Any struct that wants to be added to the list must inherit from Element.
+	 * Tag allows a T object to participate in multiple lists (differentiate the type).
+	 */
+public:
+	struct Element {
+		Element * next;
+	};
+
+private:
+	Element * head;
+
+public:
+	ForwardChain (Element * head_ = nullptr) : head (head_) {}
+
+	T * pop (void) noexcept {
+		T * r = static_cast<T *> (head);
+		if (head != nullptr)
+			head = head->next;
+		return r;
+	}
+	void push (T & t) noexcept {
+		Element & e = t;
+		e.next = head;
+		head = &e;
+	}
+
+	class iterator : public std::iterator<std::forward_iterator_tag, T> {
+	private:
+		Element * current;
+
+	public:
+		// default construction is equivalent to a end ptr.
+		iterator (Element * p = nullptr) noexcept : current (p) {}
+		bool operator==(iterator other) noexcept { return current == other.current; }
+		bool operator!=(iterator other) noexcept { return current != other.current; }
+		iterator & operator++(void) noexcept {
+			current = current->next;
+			return *this;
+		}
+		iterator operator++(int) noexcept {
+			auto cpy = *this;
+			++*this;
+			return cpy;
+		}
+		T & operator*(void) noexcept { return *static_cast<T *> (current); }
+	};
+
+	iterator begin (void) noexcept { return {head}; }
+	iterator end (void) noexcept { return {}; }
+
+	class Atomic {
+	private:
+		std::atomic<Element *> head;
+
+	public:
+		Atomic () : head (nullptr) {}
+
+		void push (T & t) noexcept {
+			Element & e = t;
+			Element * expected = head.load (std::memory_order_relaxed);
+			do {
+				e.next = expected;
+			} while (!head.compare_exchange_weak (expected, &e, std::memory_order_release,
+			                                      std::memory_order_relaxed));
+		}
+
+		ForwardChain take_all (void) noexcept {
+			Element * previous = head.load (std::memory_order_relaxed);
+			while (!head.compare_exchange_weak (previous, nullptr, std::memory_order_acquire,
+			                                    std::memory_order_relaxed))
+				;
+			return {previous};
+		}
+	};
 };
 }
 
