@@ -9,7 +9,7 @@
 // system specific
 #include <unistd.h>
 
-#include "assert_level.h"
+#include "reporting.h"
 
 namespace Givy {
 
@@ -18,19 +18,15 @@ using std::size_t;
 /* ------------------------ Integer math utils -------------------- */
 
 namespace Math {
-	template <typename T> static constexpr bool is_power_2 (T x) noexcept {
-		static_assert (std::numeric_limits<T>::is_integer, "T must be an integer");
-		return x > 0 && (x & (x - 1)) == 0;
-	}
-	template <typename T> static constexpr T divide_up (T n, T div) noexcept {
+	template <typename T> constexpr T divide_up (T n, T div) {
 		static_assert (std::numeric_limits<T>::is_integer, "T must be an integer");
 		return (n + div - 1) / div;
 	}
-	template <typename T> static constexpr T align (T n, T align) noexcept {
+	template <typename T> constexpr T align (T n, T align) {
 		static_assert (std::numeric_limits<T>::is_integer, "T must be an integer");
 		return (n / align) * align;
 	}
-	template <typename T> static constexpr T align_up (T n, T align) noexcept {
+	template <typename T> constexpr T align_up (T n, T align) {
 		static_assert (std::numeric_limits<T>::is_integer, "T must be an integer");
 		return divide_up (n, align) * align;
 	}
@@ -43,50 +39,49 @@ struct Ptr {
 	 */
 	uintptr_t p;
 
-	explicit constexpr Ptr (uintptr_t ptr) noexcept : p (ptr) {}
-	constexpr Ptr (std::nullptr_t) noexcept : p (0) {}
-	template <typename T>
-	explicit constexpr Ptr (T * ptr) noexcept : p (reinterpret_cast<uintptr_t> (ptr)) {}
+	explicit Ptr (uintptr_t ptr) : p (ptr) {}
+	Ptr (std::nullptr_t) : p (0) {}
+	template <typename T> explicit Ptr (T * ptr) : p (reinterpret_cast<uintptr_t> (ptr)) {}
 
-	template <typename T> constexpr T as (void) const noexcept { return reinterpret_cast<T> (p); }
-	template <typename T> constexpr operator T *(void) const noexcept { return as<T *> (); }
+	template <typename T> T as (void) const { return reinterpret_cast<T> (p); }
+	template <typename T> operator T *(void) const { return as<T *> (); }
 
-	constexpr Ptr add (size_t off) const noexcept { return Ptr (p + off); }
-	constexpr Ptr sub (size_t off) const noexcept { return Ptr (p - off); }
-	constexpr size_t sub (Ptr ptr) const noexcept { return p - ptr.p; }
-	constexpr Ptr lshift (size_t sh) const noexcept { return Ptr (p << sh); }
-	constexpr Ptr rshift (size_t sh) const noexcept { return Ptr (p >> sh); }
+	Ptr add (size_t off) const { return Ptr (p + off); }
+	Ptr sub (size_t off) const { return Ptr (p - off); }
+	size_t sub (Ptr ptr) const { return p - ptr.p; }
+	Ptr lshift (size_t sh) const { return Ptr (p << sh); }
+	Ptr rshift (size_t sh) const { return Ptr (p >> sh); }
 
-	constexpr Ptr operator+(size_t off) const noexcept { return add (off); }
-	constexpr Ptr & operator+=(size_t off) noexcept { return * this = add (off); }
-	constexpr Ptr operator-(size_t off) const noexcept { return sub (off); }
-	constexpr Ptr & operator-=(size_t off) noexcept { return * this = sub (off); }
+	Ptr operator+(size_t off) const { return add (off); }
+	Ptr & operator+=(size_t off) { return * this = add (off); }
+	Ptr operator-(size_t off) const { return sub (off); }
+	Ptr & operator-=(size_t off) { return * this = sub (off); }
 
 	// align : backward ; align_up : forward
-	constexpr Ptr align (size_t al) const noexcept { return Ptr (Math::align (p, al)); }
-	constexpr Ptr align_up (size_t al) const noexcept { return Ptr (Math::align_up (p, al)); }
-	constexpr bool is_aligned (size_t al) const noexcept { return p % al == 0; }
+	Ptr align (size_t al) const { return Ptr (Math::align (p, al)); }
+	Ptr align_up (size_t al) const { return Ptr (Math::align_up (p, al)); }
+	bool is_aligned (size_t al) const { return p % al == 0; }
 
 	// Compute diff
-	size_t operator-(Ptr other) const noexcept { return p - other.p; }
+	size_t operator-(Ptr other) const { return p - other.p; }
 };
 
-constexpr bool operator<(Ptr lhs, Ptr rhs) noexcept {
+bool operator<(Ptr lhs, Ptr rhs) {
 	return lhs.p < rhs.p;
 }
-constexpr bool operator>(Ptr lhs, Ptr rhs) noexcept {
+bool operator>(Ptr lhs, Ptr rhs) {
 	return lhs.p > rhs.p;
 }
-constexpr bool operator<=(Ptr lhs, Ptr rhs) noexcept {
+bool operator<=(Ptr lhs, Ptr rhs) {
 	return lhs.p <= rhs.p;
 }
-constexpr bool operator>=(Ptr lhs, Ptr rhs) noexcept {
+bool operator>=(Ptr lhs, Ptr rhs) {
 	return lhs.p >= rhs.p;
 }
-constexpr bool operator==(Ptr lhs, Ptr rhs) noexcept {
+bool operator==(Ptr lhs, Ptr rhs) {
 	return lhs.p == rhs.p;
 }
-constexpr bool operator!=(Ptr lhs, Ptr rhs) noexcept {
+bool operator!=(Ptr lhs, Ptr rhs) {
 	return lhs.p != rhs.p;
 }
 
@@ -95,10 +90,11 @@ constexpr bool operator!=(Ptr lhs, Ptr rhs) noexcept {
 /* Basic type to represent a piece of memory (ptr and size).
  */
 struct Block {
-	Ptr ptr = nullptr;
-	size_t size = 0;
+	Ptr ptr{nullptr};
+	size_t size{0};
 
-	bool contains (Ptr p) { return ptr <= p && p < ptr + size; }
+	// Test if it contains p
+	bool contains (Ptr p) const { return ptr <= p && p < ptr + size; }
 };
 
 /* ------------------------------ Low level memory management ---------------------- */
@@ -108,16 +104,16 @@ namespace VMem {
 	 */
 
 	// System basic pages
-	static const size_t PageShift = 12;
-	static const size_t PageSize = 1 << PageShift;
+	constexpr size_t PageShift = 12;
+	constexpr size_t PageSize = 1 << PageShift;
 	// Superpage : 2MB
-	static const size_t SuperpageShift = PageShift + 9;
-	static const size_t SuperpageSize = 1 << SuperpageShift;
-	static const size_t SuperpagePageNB = 1 << (SuperpageShift - PageShift);
+	constexpr size_t SuperpageShift = PageShift + 9;
+	constexpr size_t SuperpageSize = 1 << SuperpageShift;
+	constexpr size_t SuperpagePageNB = 1 << (SuperpageShift - PageShift);
 	// Some checks
 	static_assert (sizeof (void *) == 8, "64 bit arch required");
 	static_assert (SuperpageSize > PageSize, "SuperpageSize <= PageSize");
-	static inline void runtime_asserts (void) { ASSERT_STD (sysconf (_SC_PAGESIZE) == PageSize); }
+	inline void runtime_asserts (void) { ASSERT_STD (sysconf (_SC_PAGESIZE) == PageSize); }
 }
 
 /* --------------------------- Global address space memory layout --------------------- */

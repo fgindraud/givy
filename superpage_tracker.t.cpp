@@ -71,14 +71,17 @@ int main (void) {
 				wait_count--;
 				while (start == 0)
 					;
-				for (int j = 0; j < nb_alloc; ++j) r[j] = tracker.acquire_num (10);
+				for (int j = 0; j < nb_alloc; ++j)
+					r[j] = tracker.acquire_num (10);
 			}, &allocs[i * nb_alloc]);
 		while (wait_count)
 			;
 		start = 1;
-		for (int i = 0; i < nb_th; ++i) threads[i].join ();
+		for (int i = 0; i < nb_th; ++i)
+			threads[i].join ();
 		for (int j = 0; j < nb_th; ++j) {
-			for (int i = 0; i < nb_alloc; ++i) printf ("%zu ", allocs[j * nb_alloc + i]);
+			for (int i = 0; i < nb_alloc; ++i)
+				printf ("%zu ", allocs[j * nb_alloc + i]);
 			printf ("\n");
 		}
 		tracker.print ();

@@ -1,8 +1,11 @@
 .PHONY: all clean disassemble
 
-CPPFLAGS = -std=c++14 -O3 -Wall -Wextra
+CPPFLAGS = -std=c++14 
+CPPFLAGS += -fno-rtti -fno-exceptions
+CPPFLAGS += -O3 -Wall -Wextra
+CPPFLAGS += -DASSERT_LEVEL_SAFE
 
-FILES = assert_level.cpp
+FILES = 
 
 all: test_main test_spt test_chain
 

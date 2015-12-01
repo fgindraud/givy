@@ -4,7 +4,7 @@
 #include <iterator>
 #include <atomic>
 
-#include "assert_level.h"
+#include "reporting.h"
 
 namespace Givy {
 
@@ -19,9 +19,9 @@ public:
 		Element * prev;
 		Element * next;
 		// Initialise as a singleton link (loops on itself)
-		Element () noexcept { reset (); }
-		void reset (void) noexcept { prev = next = this; }
-		~Element () noexcept { extract (this); /* remove from any list */ }
+		Element () { reset (); }
+		void reset (void) { prev = next = this; }
+		~Element () { extract (this); /* remove from any list */ }
 		// Copy/move is meaningless
 		Element (const Element &) = delete;
 		Element & operator=(const Element &) = delete;
@@ -29,13 +29,15 @@ public:
 		Element & operator=(Element &&) = delete;
 	};
 
-	static void insert_after (Element & to_insert, Element & e) noexcept { cross (&e, &to_insert); }
-	static void insert_before (Element & to_insert, Element & e) noexcept { cross (&to_insert, &e); }
-	static void unlink (Element & e) noexcept { extract (&e); }
+	// Default ctor ok ; others are deleted due to Element
 
-	void push_front (T & t) noexcept { insert_after (t, root); }
-	void push_back (T & t) noexcept { insert_before (t, root); }
-	T * pop_front (void) noexcept {
+	static void insert_after (Element & to_insert, Element & e) { cross (&e, &to_insert); }
+	static void insert_before (Element & to_insert, Element & e) { cross (&to_insert, &e); }
+	static void unlink (Element & e) { extract (&e); }
+
+	void push_front (T & t) { insert_after (t, root); }
+	void push_back (T & t) { insert_before (t, root); }
+	T * pop_front (void) {
 		Element * e = root.next;
 		if (e == &root) {
 			return nullptr;
@@ -44,7 +46,7 @@ public:
 			return static_cast<T *> (e);
 		}
 	}
-	T * pop_back (void) noexcept {
+	T * pop_back (void) {
 		Element * e = root.prev;
 		if (e == &root) {
 			return nullptr;
@@ -59,32 +61,32 @@ public:
 		Element * current;
 
 	public:
-		iterator (Element * p = nullptr) noexcept : current (p) {}
-		bool operator==(iterator other) const noexcept { return current == other.current; }
-		bool operator!=(iterator other) const noexcept { return current != other.current; }
-		iterator & operator++(void) noexcept {
+		iterator (Element * p = nullptr) : current (p) {}
+		bool operator==(iterator other) const { return current == other.current; }
+		bool operator!=(iterator other) const { return current != other.current; }
+		iterator & operator++(void) {
 			current = current->next;
 			return *this;
 		}
-		iterator & operator--(void) noexcept {
+		iterator & operator--(void) {
 			current = current->prev;
 			return *this;
 		}
-		iterator operator++(int) noexcept {
+		iterator operator++(int) {
 			auto cpy = *this;
 			++*this;
 			return cpy;
 		}
-		iterator operator--(int) noexcept {
+		iterator operator--(int) {
 			auto cpy = *this;
 			--*this;
 			return cpy;
 		}
-		T & operator*(void) const noexcept { return *static_cast<T *> (current); }
+		T & operator*(void) const { return *static_cast<T *> (current); }
 	};
 
-	iterator begin (void) noexcept { return {root.next}; }
-	iterator end (void) noexcept { return {&root}; }
+	iterator begin (void) { return {root.next}; }
+	iterator end (void) { return {&root}; }
 
 private:
 	/* Element structs forms a double linked circular chain. */
@@ -98,7 +100,7 @@ private:
 	 * Cuts left->a, b->right, and creates left->right, b->a.
 	 * If left or right is a singleton chain, equivalent to before/after insertion.
 	 */
-	static void cross (Element * left, Element * right) noexcept {
+	static void cross (Element * left, Element * right) {
 		Element * a = left->next;
 		Element * b = right->prev;
 		a->prev = b;
@@ -114,7 +116,7 @@ private:
 	 *
 	 * Cuts a->link, link->b, generates a->b, link->link.
 	 */
-	static void extract (Element * link) noexcept { cross (link, link); }
+	static void extract (Element * link) { cross (link, link); }
 };
 
 template <typename T, size_t exact_size_slot_nb> struct QuickList {
@@ -124,16 +126,16 @@ template <typename T, size_t exact_size_slot_nb> struct QuickList {
 	 * The set of list is fixed, and is composed of exact_size_slot_nb lists for lengths from 1 to
 	 * exact_size_slot_nb, plus another one (always sorted in increasing order) for all bigger
 	 * lengths.
+	 *
+	 * T must have a length () method
 	 */
+public:
 	struct Tag; // Custom tag for Chain
 	using ListType = Chain<T, Tag>;
 	using Element = typename ListType::Element;
 
-	ListType exact_size_slots[exact_size_slot_nb];
-	ListType bigger_sizes;
-	size_t stored_length = 0;
+	// Default ctor ok ; others deleted due to Chain
 
-	// T must have a length () method
 	void insert (T & element) {
 		size_t len = element.length ();
 		ASSERT_SAFE (len > 0);
@@ -170,11 +172,18 @@ template <typename T, size_t exact_size_slot_nb> struct QuickList {
 		}
 		return nullptr;
 	}
-	void remove (T & t) noexcept {
+	void remove (T & t) {
 		stored_length -= t.length ();
 		ListType::unlink (t);
 	}
+
+	// Cumulated length stored in the quicklist
 	size_t length (void) const { return stored_length; }
+
+private:
+	ListType exact_size_slots[exact_size_slot_nb];
+	ListType bigger_sizes;
+	size_t stored_length{0};
 };
 
 template <typename T, typename Tag = void> class ForwardChain {
@@ -192,15 +201,15 @@ private:
 	Element * head;
 
 public:
-	ForwardChain (Element * head_ = nullptr) : head (head_) {}
+	explicit ForwardChain (Element * head_ = nullptr) : head (head_) {}
 
-	T * pop (void) noexcept {
+	T * pop (void) {
 		T * r = static_cast<T *> (head);
 		if (head != nullptr)
 			head = head->next;
 		return r;
 	}
-	void push (T & t) noexcept {
+	void push (T & t) {
 		Element & e = t;
 		e.next = head;
 		head = &e;
@@ -212,32 +221,30 @@ public:
 
 	public:
 		// default construction is equivalent to a end ptr.
-		iterator (Element * p = nullptr) noexcept : current (p) {}
-		bool operator==(iterator other) noexcept { return current == other.current; }
-		bool operator!=(iterator other) noexcept { return current != other.current; }
-		iterator & operator++(void) noexcept {
+		explicit iterator (Element * p = nullptr) : current (p) {}
+		bool operator==(iterator other) { return current == other.current; }
+		bool operator!=(iterator other) { return current != other.current; }
+		iterator & operator++(void) {
 			current = current->next;
 			return *this;
 		}
-		iterator operator++(int) noexcept {
+		iterator operator++(int) {
 			auto cpy = *this;
 			++*this;
 			return cpy;
 		}
-		T & operator*(void) noexcept { return *static_cast<T *> (current); }
+		T & operator*(void) { return *static_cast<T *> (current); }
 	};
 
-	iterator begin (void) noexcept { return {head}; }
-	iterator end (void) noexcept { return {}; }
+	iterator begin (void) { return iterator (head); }
+	iterator end (void) { return iterator (); }
 
 	class Atomic {
 	private:
-		std::atomic<Element *> head;
+		std::atomic<Element *> head{nullptr};
 
 	public:
-		Atomic () : head (nullptr) {}
-
-		void push (T & t) noexcept {
+		void push (T & t) {
 			Element & e = t;
 			Element * expected = head.load (std::memory_order_relaxed);
 			do {
@@ -246,12 +253,12 @@ public:
 			                                      std::memory_order_relaxed));
 		}
 
-		ForwardChain take_all (void) noexcept {
+		ForwardChain take_all (void) {
 			Element * previous = head.load (std::memory_order_relaxed);
 			while (!head.compare_exchange_weak (previous, nullptr, std::memory_order_acquire,
 			                                    std::memory_order_relaxed))
 				;
-			return {previous};
+			return ForwardChain (previous);
 		}
 	};
 };

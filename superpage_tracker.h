@@ -5,7 +5,7 @@
 #include <tuple>
 
 #include "base_defs.h"
-#include "assert_level.h"
+#include "reporting.h"
 #include "utility.h"
 
 namespace Givy {
@@ -41,7 +41,7 @@ namespace Allocator {
 
 	public:
 		SuperpageTracker (const GasLayout & layout_, Alloc & allocator_);
-		// Automatically no copy due to FixedArray
+		// No copy/move due to FixedArray
 
 		/* Aquire/Release a superpage block (superpage number and pointer versions).
 		 * Trim will reduce a superpage block to 1 superpage.
@@ -50,7 +50,7 @@ namespace Allocator {
 		Ptr acquire (size_t superpage_nb) { return layout.superpage (acquire_num (superpage_nb)); }
 		void release_num (size_t superpage_num, size_t superpage_nb);
 		void trim_num (size_t superpage_num, size_t superpage_nb) {
-			ASSERT_SAFE (superpage_nb > 1);
+			ASSERT_STD (superpage_nb > 1);
 			release_num (superpage_num + 1, superpage_nb - 1);
 		}
 
@@ -72,14 +72,18 @@ namespace Allocator {
 
 	private:
 		struct Index {
+			// Helper type to represent a position in the table
 			size_t array_idx;
 			size_t bit_idx;
 
 			Index (size_t array_idx_, size_t bit_idx_) : array_idx (array_idx_), bit_idx (bit_idx_) {}
+
+			// Conversion from/to a superpage number
 			explicit Index (size_t superpage_num_)
 			    : Index (superpage_num_ / BitArray::Bits, superpage_num_ % BitArray::Bits) {}
-
 			size_t superpage_num (void) const { return array_idx * BitArray::Bits + bit_idx; }
+
+			// Movement in the table
 			void next_array_cell_first_bit (void) {
 				array_idx++;
 				bit_idx = 0;
@@ -89,11 +93,13 @@ namespace Allocator {
 				array_idx--;
 				bit_idx = BitArray::Bits - 1;
 			}
+
 			bool operator<(const Index & rhs) const {
 				return std::tie (array_idx, bit_idx) < std::tie (rhs.array_idx, rhs.bit_idx);
 			}
 		};
 
+		// Bit manipulation helpers
 		bool set_mapping_bits (Index loc_start, IntType expected_start, Index loc_end,
 		                       IntType expected_end);
 		void set_sequence_bits (Index loc_start, Index loc_end);
@@ -194,7 +200,8 @@ namespace Allocator {
 			// Not found, go to next cell
 			search_at.next_array_cell_first_bit ();
 		}
-		throw std::runtime_error ("SuperpageTracker: no superpage sequence found");
+		ASSERT_FAIL ("SuperpageTracker: no superpage sequence found");
+		return 0;
 	}
 
 	template <typename Alloc>

@@ -1,7 +1,7 @@
 #ifndef ALLOC_PARTS_H
 #define ALLOC_PARTS_H
 
-#include "assert_level.h"
+#include "reporting.h"
 #include "base_defs.h"
 #include "utility.h"
 
@@ -25,18 +25,21 @@ namespace Allocator {
 			Ptr right_mapped; /* leftmost mapped segment (after last mapped byte) */
 
 		public:
-			BumpPointerBase (Ptr start)
+			explicit BumpPointerBase (Ptr start)
 			    : left (start), left_mapped (start), right (start), right_mapped (start) {
-				ASSERT_OPT (start.is_aligned (VMem::PageSize));
+				ASSERT_STD (start.is_aligned (VMem::PageSize));
 			}
-			~BumpPointerBase () { VMem::unmap_noexcept (left_mapped, right_mapped - left_mapped); }
+			~BumpPointerBase () {
+				if (left_mapped < right_mapped)
+					VMem::unmap (left_mapped, right_mapped - left_mapped);
+			}
 
 			Block allocate_right (size_t size, size_t align) {
 				Ptr user_mem = right.align_up (align);
 				right = user_mem + size;
 				if (!(right < right_mapped)) {
 					size_t to_map = right.align_up (VMem::PageSize) - right_mapped;
-					VMem::map (right_mapped, to_map);
+					VMem::map_checked (right_mapped, to_map);
 					right_mapped += to_map;
 				}
 				return {user_mem, size};
@@ -45,7 +48,7 @@ namespace Allocator {
 				left = left.sub (size).align (align);
 				if (!(left >= left_mapped)) {
 					Ptr map_from = left.align (VMem::PageSize);
-					VMem::map (map_from, left_mapped - map_from);
+					VMem::map_checked (map_from, left_mapped - map_from);
 				}
 				return {left, size};
 			}
@@ -54,13 +57,13 @@ namespace Allocator {
 
 		class BumpPointer : public BumpPointerBase {
 		public:
-			BumpPointer (Ptr start) : BumpPointerBase (start) {}
+			explicit BumpPointer (Ptr start) : BumpPointerBase (start) {}
 			Block allocate (size_t size, size_t align) { return allocate_right (size, align); }
 		};
 
 		class BackwardBumpPointer : public BumpPointerBase {
 		public:
-			BackwardBumpPointer (Ptr start) : BumpPointerBase (start) {}
+			explicit BackwardBumpPointer (Ptr start) : BumpPointerBase (start) {}
 			Block allocate (size_t size, size_t align) { return allocate_left (size, align); }
 		};
 	}
