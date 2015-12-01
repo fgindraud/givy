@@ -82,51 +82,35 @@ template <typename IntType> struct BitMask {
 	static constexpr IntType one (void) { return 0x1; }
 
 	static constexpr IntType lsb_ones (size_t nb) {
+		// require : 0 <= nb <= Bits
 		ASSERT_SAFE (nb <= Bits);
-		// nb 1s followed by 0s
-		if (nb == 0)
-			return 0;
-		else
-			return ones () >> (Bits - nb);
+		// return : 1s in [0, nb[ - 0s in [nb, Bits[
+		return (nb == 0) ? 0 : (ones () >> (Bits - nb));
 	}
 	static constexpr IntType msb_ones (size_t nb) {
+		// require : 0 <= nb <= Bits
 		ASSERT_SAFE (nb <= Bits);
-		// 0s followed by nb 1s
-		if (nb == 0)
-			return 0;
-		else
-			return ones () << (Bits - nb);
+		// return : 0s in [0, nb[ - 1s in [nb, Bits[
+		return (nb == 0) ? 0 : (ones () << (Bits - nb));
 	}
 	static constexpr IntType window_size (size_t start, size_t size) {
-		// 0s until start, then 1s until end, then 0s
-		if (start >= Bits)
-			return 0;
-		else
-			return lsb_ones (size) << start;
+		// require : 0 <= start && start + size <= Bits
+		ASSERT_SAFE (start + size <= Bits);
+		// return : 0s in [0, start[ - 1s in [start, start + size[ - 0s in [start + size, Bits[
+		return (start == Bits) ? 0 : (lsb_ones (size) << start);
 	}
 	static constexpr IntType window_bound (size_t start, size_t end) {
-		// 0s until start, then 1s until end, then 0s
+		// require : 0 <= start <= end <= Bits
+		ASSERT_SAFE (start <= end);
+		ASSERT_SAFE (end <= Bits);
+		// return : 0s in [0, start[ - 1s in [start, end[ - 0s in [end, Bits[
 		return window_size (start, end - start);
 	}
 
 	static constexpr bool is_set (IntType i, size_t bit) {
-		if (bit >= Bits)
-			return false;
-		else
-			return (one () << bit) & i;
-	}
-	static size_t find_zero_subsequence (IntType searched, size_t len, size_t from_bit,
-	                                     size_t up_to_bit = Bits) {
-		// return first found offset, or Bits if not found
-		size_t window_end = from_bit + len;
-		IntType bit_window = window_bound (from_bit, window_end);
-		while (window_end <= up_to_bit) {
-			if ((searched & bit_window) == zeros ())
-				return window_end - len; // found
-			bit_window <<= 1;
-			window_end++;
-		}
-		return Bits; // not found
+		// require : 0 <= bit < Bits
+		ASSERT_SAFE (bit < Bits);
+		return (one () << bit) & i;
 	}
 	static constexpr size_t count_msb_zeros (IntType c) {
 		size_t b = Bits;
@@ -148,10 +132,30 @@ template <typename IntType> struct BitMask {
 		return b;
 	}
 	static constexpr size_t count_msb_ones (IntType c) { return count_msb_zeros (~c); }
+
+	static size_t find_zero_subsequence (IntType searched, size_t len, size_t from_bit,
+	                                     size_t up_to_bit) {
+		// require : 0 <= from_bit <= up_to_bit <= Bits
+		ASSERT_SAFE (from_bit <= up_to_bit);
+		ASSERT_SAFE (up_to_bit <= Bits);
+		// require : from_bit + len <= up_to_bit
+		ASSERT_SAFE (from_bit + len <= up_to_bit);
+		// return : offset of first 0s sequence of length 'len' in 'searched' (in [from_bit, up_to_bit[)
+		size_t window_end = from_bit + len;
+		IntType bit_window = window_bound (from_bit, window_end);
+		while (window_end <= up_to_bit) {
+			if ((searched & bit_window) == zeros ())
+				return window_end - len; // found
+			bit_window <<= 1;
+			window_end++;
+		}
+		return Bits; // not found
+	}
+
 	static constexpr size_t find_previous_zero (IntType c, size_t pos) {
+		// require : 0 <= pos < Bits
 		ASSERT_SAFE (pos < Bits);
-		// Find index of first zero before 'pos' position (included)
-		// Returns Bits if not found
+		// return : offset of last 0 in c:[0, pos], or Bits if none was found
 		c <<= (Bits - 1) - pos; // Shift so that 'pos' bit is now the msb
 		size_t distance_to_prev_zero = count_msb_ones (c);
 		if (distance_to_prev_zero > pos)
@@ -161,10 +165,10 @@ template <typename IntType> struct BitMask {
 	}
 
 	static const char * str (IntType c) {
-		// Use with caution, unsafe buffer
+		// return : static buffer to string representing c (bits)
 		static char buffer[Bits + 1] = {'\0'};
 		for (size_t i = 0; i < Bits; ++i) {
-			buffer[i] = (IntType (0x1) & c) ? '1' : '0';
+			buffer[i] = (one () & c) ? '1' : '0';
 			c >>= 1;
 		}
 		return buffer;
@@ -174,40 +178,22 @@ template <typename IntType> struct BitMask {
 #if defined(__GNUC__) || defined(__clang__)
 // For gcc and clang, define overloads using faster builtins
 template <> constexpr size_t BitMask<unsigned int>::count_msb_zeros (unsigned int c) {
-	size_t b = Bits;
-	if (c != 0)
-		b = __builtin_clz (c);
-	return b;
+	return (c > 0) ? __builtin_clz (c) : Bits;
 }
 template <> constexpr size_t BitMask<unsigned long>::count_msb_zeros (unsigned long c) {
-	size_t b = Bits;
-	if (c != 0)
-		b = __builtin_clzl (c);
-	return b;
+	return (c > 0) ? __builtin_clzl (c) : Bits;
 }
 template <> constexpr size_t BitMask<unsigned long long>::count_msb_zeros (unsigned long long c) {
-	size_t b = Bits;
-	if (c != 0)
-		b = __builtin_clzll (c);
-	return b;
+	return (c > 0) ? __builtin_clzll (c) : Bits;
 }
 template <> constexpr size_t BitMask<unsigned int>::count_lsb_zeros (unsigned int c) {
-	size_t b = Bits;
-	if (c != 0)
-		b = __builtin_ctz (c);
-	return b;
+	return (c > 0) ? __builtin_ctz (c) : Bits;
 }
 template <> constexpr size_t BitMask<unsigned long>::count_lsb_zeros (unsigned long c) {
-	size_t b = Bits;
-	if (c != 0)
-		b = __builtin_ctzl (c);
-	return b;
+	return (c > 0) ? __builtin_ctzl (c) : Bits;
 }
 template <> constexpr size_t BitMask<unsigned long long>::count_lsb_zeros (unsigned long long c) {
-	size_t b = Bits;
-	if (c != 0)
-		b = __builtin_ctzll (c);
-	return b;
+	return (c > 0) ? __builtin_ctzll (c) : Bits;
 }
 template <> constexpr size_t BitMask<unsigned int>::count_zeros (unsigned int c) {
 	return Bits - __builtin_popcount (c);
@@ -229,13 +215,16 @@ namespace Math {
 	}
 
 	constexpr size_t log_2_inf (size_t x) {
-		// log2 (rounded to lower) ; 0 is UB
+		// require : 0 < x
+		ASSERT_SAFE (0 < x);
+		// return : log2(x) (rounded to lower)
 		using B = BitMask<size_t>;
-		ASSERT_SAFE (x > 0); // FIXME make assert constexpr capable... (throw only ?)
 		return (B::Bits - 1) - B::count_msb_zeros (x);
 	}
 	constexpr size_t log_2_sup (size_t x) {
-		// log2 (rounded to upper) ; 0 is UB
+		// require : 1 < x (due to implem)
+		ASSERT_SAFE (1 < x);
+		// return : log2(x) (rounded to upper)
 		return log_2_inf (x - 1) + 1;
 	}
 }

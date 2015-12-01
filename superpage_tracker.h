@@ -140,19 +140,22 @@ namespace Allocator {
 
 			size_t limit =
 			    (search_at.array_idx == search_end.array_idx) ? search_end.bit_idx : BitArray::Bits;
-			size_t pos = BitArray::find_zero_subsequence (c, superpage_nb, search_at.bit_idx, limit);
-			if (pos < BitArray::Bits) {
-				/* A sequence has been found, and it is contained in one array cell.
-				 * I only need one atomic operation to reserve it.
-				 *
-				 * On bit flip failure, restart the search at the same cell.
-				 * It is unlikely that previous bits have been freed, so no need to go back from the start.
-				 */
-				auto loc_start = Index (search_at.array_idx, pos);
-				auto loc_end = Index (search_at.array_idx, pos + superpage_nb);
-				if (!set_bits (loc_start, c, loc_end, BitArray::zeros ()))
-					continue;
-				return loc_start.superpage_num ();
+			if (search_at.bit_idx + superpage_nb <= limit) {
+				size_t pos = BitArray::find_zero_subsequence (c, superpage_nb, search_at.bit_idx, limit);
+				if (pos < BitArray::Bits) {
+					/* A sequence has been found, and it is contained in one array cell.
+					 * I only need one atomic operation to reserve it.
+					 *
+					 * On bit flip failure, restart the search at the same cell.
+					 * It is unlikely that previous bits have been freed, so no need to go back from the
+					 * start.
+					 */
+					auto loc_start = Index (search_at.array_idx, pos);
+					auto loc_end = Index (search_at.array_idx, pos + superpage_nb);
+					if (!set_bits (loc_start, c, loc_end, BitArray::zeros ()))
+						continue;
+					return loc_start.superpage_num ();
+				}
 			}
 
 			// Look for the start of a multicell sequence

@@ -1,3 +1,5 @@
+#define ASSERT_LEVEL_SAFE
+
 #include <atomic>
 #include <array>
 
@@ -120,7 +122,7 @@ namespace Allocator {
 		void free_page_block (PageBlockHeader & pbh);
 
 	private:
-		Header header;
+		Header header; // TODO remove, and compute constexpr stuff outside class
 	};
 
 	namespace Thresholds {
@@ -188,11 +190,7 @@ namespace Allocator {
 			header.huge_alloc = {Ptr (this).add (huge_alloc_first_page * VMem::PageSize),
 			                     huge_alloc_page_nb * VMem::PageSize};
 
-		// PBHs : init chain links
-		for (size_t i = 0; i < VMem::SuperpagePageNB; ++i)
-			header.page_headers[i].reset ();
-
-		// PBH : init page block info
+		// PBH : init page block info (links are init by default)
 		PageBlockHeader::format (&header.page_headers[0], HeaderSpacePages, MemoryType::Reserved);
 		PageBlockHeader::format (&header.page_headers[HeaderSpacePages],
 		                         huge_alloc_first_page - HeaderSpacePages, MemoryType::Unused);
@@ -474,7 +472,7 @@ int main (void) {
 	G::deallocate (p.ptr);
 
 	namespace B = Givy::Math;
-	for (size_t i = 1; i < 66; ++i)
+	for (size_t i = 2; i < 66; ++i)
 		std::cout << i << "\t" << B::log_2_inf (i) << "\t" << B::log_2_sup (i) << std::endl;
 
 	return 0;

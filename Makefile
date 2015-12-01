@@ -3,7 +3,6 @@
 CPPFLAGS = -std=c++14 
 CPPFLAGS += -fno-rtti -fno-exceptions
 CPPFLAGS += -O3 -Wall -Wextra
-CPPFLAGS += -DASSERT_LEVEL_SAFE
 
 FILES = 
 

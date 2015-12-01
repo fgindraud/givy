@@ -1,3 +1,5 @@
+#define ASSERT_LEVEL_SAFE
+
 #include <iostream>
 
 #include "chain.h"
