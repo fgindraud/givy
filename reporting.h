@@ -2,6 +2,7 @@
 #define REPORTING_H
 
 #include <cstdio>
+#include <cstdlib>
 
 /* This file defines error and debug reporting primitives
  */

@@ -7,6 +7,7 @@
 #include "base_defs.h"
 #include "reporting.h"
 #include "utility.h"
+#include "array.h"
 
 namespace Givy {
 namespace Allocator {

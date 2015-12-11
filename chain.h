@@ -21,7 +21,7 @@ public:
 		// Initialise as a singleton link (loops on itself)
 		Element () { reset (); }
 		void reset (void) { prev = next = this; }
-		~Element () { extract (this); /* remove from any list */ }
+		~Element () { ASSERT_SAFE (next == this); /* ensure it has been removed from any list */ }
 		// Copy/move is meaningless
 		Element (const Element &) = delete;
 		Element & operator=(const Element &) = delete;
@@ -83,6 +83,7 @@ public:
 			return cpy;
 		}
 		T & operator*(void) const { return *static_cast<T *> (current); }
+		T * operator->(void) const { return static_cast<T *> (current); }
 	};
 
 	iterator begin (void) { return {root.next}; }
@@ -234,6 +235,7 @@ public:
 			return cpy;
 		}
 		T & operator*(void) { return *static_cast<T *> (current); }
+		T * operator->(void) { return static_cast<T *> (current); }
 	};
 
 	iterator begin (void) { return iterator (head); }

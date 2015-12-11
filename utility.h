@@ -13,59 +13,6 @@
 
 namespace Givy {
 
-/* ------------------------ Array ----------------------- */
-
-template <typename T, typename Alloc> class FixedArray {
-	/* Dynamic non-resizable array supporting custom allocators
-	 */
-private:
-	Alloc & allocator;
-	size_t length;
-	Block memory;
-
-	T * array (void) { return memory.ptr; }
-	const T * array (void) const { return memory.ptr; }
-
-public:
-	template <typename... Args>
-	FixedArray (size_t size_, Alloc & allocator_, Args &&... args)
-	    : allocator (allocator_), length (size_) {
-		// Allocate
-		ASSERT_STD (size_ > 0);
-		memory = allocator.allocate (length * sizeof (T), alignof (T));
-		ASSERT_STD (memory.ptr != nullptr);
-
-		// Construct
-		for (size_t i = 0; i < size (); ++i)
-			new (&(array ()[i])) T (args...);
-	}
-	~FixedArray () {
-		// Destruct
-		for (size_t i = 0; i < size (); ++i)
-			array ()[i].~T ();
-
-		// Deallocate
-		allocator.deallocate (memory);
-	}
-
-	// Prevent copy/move
-	FixedArray (const FixedArray &) = delete;
-	FixedArray & operator=(const FixedArray &) = delete;
-	FixedArray (FixedArray &&) = delete;
-	FixedArray & operator=(FixedArray &&) = delete;
-
-	// Size and access
-	size_t size (void) const { return length; }
-	const T & operator[](size_t i) const {
-		ASSERT_SAFE (i < size ());
-		return array ()[i];
-	}
-	T & operator[](size_t i) {
-		ASSERT_SAFE (i < size ());
-		return array ()[i];
-	}
-};
-
 /* ------------------------ BitMask management -------------------- */
 
 template <typename IntType> struct BitMask {
@@ -209,7 +156,7 @@ template <> constexpr size_t BitMask<unsigned long long>::count_zeros (unsigned 
 /* ----------------------------- Additionnal math utils ---------------------------- */
 
 namespace Math {
-	template <typename T> constexpr bool is_power_2 (T x) {
+	template <typename T> constexpr bool is_power_of_2 (T x) {
 		static_assert (std::numeric_limits<T>::is_integer, "T must be an integer");
 		return x > 0 && (x & (x - 1)) == 0;
 	}
@@ -226,6 +173,10 @@ namespace Math {
 		ASSERT_SAFE (1 < x);
 		// return : log2(x) (rounded to upper)
 		return log_2_inf (x - 1) + 1;
+	}
+
+	constexpr size_t round_up_as_power_of_2 (size_t x) {
+		return size_t (1) << log_2_sup (x);
 	}
 }
 
