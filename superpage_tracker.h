@@ -44,15 +44,14 @@ namespace Allocator {
 		SuperpageTracker (const GasLayout & layout_, Alloc & allocator_);
 		// No copy/move due to FixedArray
 
-		/* Aquire/Release a superpage block (superpage number and pointer versions).
+		/* Aquire/Release a superpage block, by superpage number.
 		 * Trim will reduce a superpage block to 1 superpage.
 		 */
-		size_t acquire_num (size_t superpage_nb);
-		Ptr acquire (size_t superpage_nb) { return layout.superpage (acquire_num (superpage_nb)); }
-		void release_num (size_t superpage_num, size_t superpage_nb);
-		void trim_num (size_t superpage_num, size_t superpage_nb) {
+		size_t acquire (size_t superpage_nb);
+		void release (size_t superpage_num, size_t superpage_nb);
+		void trim (size_t superpage_num, size_t superpage_nb) {
 			ASSERT_STD (superpage_nb > 1);
-			release_num (superpage_num + 1, superpage_nb - 1);
+			release (superpage_num + 1, superpage_nb - 1);
 		}
 
 		/* Get superpage block start
@@ -115,7 +114,7 @@ namespace Allocator {
 	      mapping_table (table_size, allocator_, BitArray::zeros ()),
 	      sequence_table (table_size, allocator_, BitArray::zeros ()) {}
 
-	template <typename Alloc> size_t SuperpageTracker<Alloc>::acquire_num (size_t superpage_nb) {
+	template <typename Alloc> size_t SuperpageTracker<Alloc>::acquire (size_t superpage_nb) {
 		/* I need to find a sequence of superpage_nb consecutive 0s anywhere in the table.
 		 * For now, I perform a linear search of the table, with some optimisation to prevent
 		 * using an atomic load twice on the same integer array cell if possible.
@@ -209,7 +208,7 @@ namespace Allocator {
 	}
 
 	template <typename Alloc>
-	void SuperpageTracker<Alloc>::release_num (size_t superpage_num, size_t superpage_nb) {
+	void SuperpageTracker<Alloc>::release (size_t superpage_num, size_t superpage_nb) {
 		/* Just clear the bits in the two tables.
 		 */
 		auto loc_start = Index (superpage_num);

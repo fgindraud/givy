@@ -79,7 +79,7 @@ namespace Allocator {
 
 		// Pointer to associated page (set by SuperpageBlock())
 		Ptr page;
-		
+
 		struct {
 			size_t block_size;
 			size_t max_nb_blocks;
@@ -137,6 +137,7 @@ namespace Allocator {
 		/* info */
 		size_t size (void) const { return superpage_nb; }
 		Ptr ptr (void) const { return Ptr (this); }
+		bool completely_unused (void) const;
 
 		static SuperpageBlock & from_pointer_in_first_superpage (Ptr inside);
 		static SuperpageBlock & from_pbh (PageBlockHeader & pbh);
@@ -152,6 +153,7 @@ namespace Allocator {
 
 		Block page_block_memory (const PageBlockHeader & pbh) const;
 		PageBlockHeader & page_block_header (Ptr p);
+		bool all_page_blocks_unused (void) const;
 
 		/* Owner */
 		ThreadLocalHeap * get_owner (void) const { return owner; }
@@ -190,10 +192,11 @@ namespace Allocator {
 		~MainHeap ();
 
 		/* SuperpageBlock management
-		 * - creation
+		 * - creation / destruction
 		 * - finding header from any part of superpage block (requires superpage tracker)
 		 */
 		SuperpageBlock & create_superpage_block (ThreadLocalHeap * owner, size_t huge_alloc_size);
+		void destroy_superpage_block (SuperpageBlock & spb);
 		void destroy_superpage_huge_alloc (SuperpageBlock & spb);
 		SuperpageBlock & containing_superpage_block (Ptr inside);
 	};
@@ -222,8 +225,11 @@ namespace Allocator {
 
 	private:
 		SuperpageBlock & create_superpage_block (size_t huge_alloc_size = 0);
+		void destroy_superpage_block (SuperpageBlock & spb);
 		PageBlockHeader & create_page_block (size_t nb_page, MemoryType type);
+		void destroy_page_block (PageBlockHeader & pbh, SuperpageBlock & spb);
 		Block allocate_small_block (size_t size);
+		void destroy_small_block (Ptr ptr, PageBlockHeader & pbh, SuperpageBlock & spb);
 
 		void thread_local_deallocate (Ptr ptr, SuperpageBlock & spb);
 		void process_thread_remote_frees (void);
@@ -239,13 +245,7 @@ namespace Allocator {
 
 	void PageBlockHeader::configure_small_blocks (SizeClass::Id sc_id) {
 		size_t block_size = SizeClass::block_size (sc_id);
-		small_blocks = {
-			block_size,
-			size () * VMem::PageSize / block_size,
-			0,
-			0,
-			BlockFreeList ()
-		};
+		small_blocks = {block_size, size () * VMem::PageSize / block_size, 0, 0, BlockFreeList ()};
 	}
 
 	Block PageBlockHeader::take_small_block (void) {
@@ -298,6 +298,10 @@ namespace Allocator {
 		format_pbh (HeaderSpacePages, huge_alloc_pb_index, MemoryType::Unused);
 		format_pbh (huge_alloc_pb_index, VMem::SuperpagePageNB, MemoryType::Huge);
 		unused.insert (pbh_table[HeaderSpacePages]); // Add initial unused page block to list
+	}
+
+	bool SuperpageBlock::completely_unused (void) const {
+		return size () == 1 && all_page_blocks_unused ();
 	}
 
 	SuperpageBlock & SuperpageBlock::from_pointer_in_first_superpage (Ptr inside) {
@@ -387,6 +391,11 @@ namespace Allocator {
 		return *pbh_table[pb_index].head;
 	}
 
+	bool SuperpageBlock::all_page_blocks_unused (void) const {
+		// Test if unused quicklist contains every page
+		return unused.size () == AvailablePages;
+	}
+
 	void SuperpageBlock::format_pbh (PageBlockHeader * from, PageBlockHeader * to, MemoryType type) {
 		size_t s = to - from;
 		for (auto pbh = from; pbh < to; ++pbh)
@@ -418,9 +427,16 @@ namespace Allocator {
 		size_t superpage_nb = Math::divide_up (huge_alloc_page_nb + SuperpageBlock::HeaderSpacePages,
 		                                       VMem::SuperpagePageNB);
 		// Reserve, map, configure
-		Ptr superpage_block_start = superpage_tracker.acquire (superpage_nb);
-		VMem::map_checked (superpage_block_start, superpage_nb * VMem::SuperpageSize);
-		return *new (superpage_block_start) SuperpageBlock (superpage_nb, huge_alloc_page_nb, owner);
+		Ptr spb_start = layout.superpage (superpage_tracker.acquire (superpage_nb));
+		VMem::map_checked (spb_start, superpage_nb * VMem::SuperpageSize);
+		return *new (spb_start) SuperpageBlock (superpage_nb, huge_alloc_page_nb, owner);
+	}
+
+	void MainHeap::destroy_superpage_block (SuperpageBlock & spb) {
+		Ptr spb_start = spb.ptr ();
+		spb.~SuperpageBlock (); // manual call due to placement new construction
+		superpage_tracker.release (layout.superpage_num (spb_start), spb.size ());
+		VMem::unmap_checked (spb_start, spb.size () * VMem::SuperpageSize);
 	}
 
 	void MainHeap::destroy_superpage_huge_alloc (SuperpageBlock & spb) {
@@ -428,7 +444,7 @@ namespace Allocator {
 		size_t spb_size = spb.size ();
 		ASSERT_STD (spb_size > 1);
 		Ptr spb_start (&spb);
-		superpage_tracker.trim_num (layout.superpage_num (spb_start), spb_size);
+		superpage_tracker.trim (layout.superpage_num (spb_start), spb_size);
 		VMem::unmap_checked (spb_start + VMem::SuperpageSize, (spb_size - 1) * VMem::SuperpageSize);
 
 		// Update SPB header
@@ -519,6 +535,11 @@ namespace Allocator {
 		return spb;
 	}
 
+	void ThreadLocalHeap::destroy_superpage_block (SuperpageBlock & spb) {
+		owned_superpage_blocks.remove (spb);
+		main_heap.destroy_superpage_block (spb);
+	}
+
 	PageBlockHeader & ThreadLocalHeap::create_page_block (size_t nb_page, MemoryType type) {
 		// Try to take from existing superpage blocks
 		for (auto & spb : owned_superpage_blocks)
@@ -533,37 +554,56 @@ namespace Allocator {
 		return *pbh;
 	}
 
+	void ThreadLocalHeap::destroy_page_block (PageBlockHeader & pbh, SuperpageBlock & spb) {
+		spb.free_page_block (pbh);
+		if (spb.completely_unused ())
+			destroy_superpage_block (spb);
+	}
+
 	Block ThreadLocalHeap::allocate_small_block (size_t size) {
 		auto sc_id = SizeClass::id (std::max (size, Thresholds::Smallest));
-		
+
 		// Create new page block if there is none available.
 		if (pb_by_sizeclass[sc_id].empty ()) {
 			auto & new_pbh = create_page_block (SizeClass::page_block_size (sc_id), MemoryType::Small);
 			new_pbh.configure_small_blocks (sc_id);
 			pb_by_sizeclass[sc_id].push_front (new_pbh);
 		}
-	
+
 		// Pick block from current page block
 		auto & pbh = pb_by_sizeclass[sc_id].front ();
 		Block blk = pbh.take_small_block ();
-		
+
 		// Remove from list if empty
 		if (!pbh.has_small_block ())
 			pb_by_sizeclass[sc_id].pop_front ();
+
+		return blk;
+	}
+
+	void ThreadLocalHeap::destroy_small_block (Ptr ptr, PageBlockHeader & pbh, SuperpageBlock & spb) {
+		pbh.put_small_block (ptr);
+		if (pbh.has_all_small_blocks ()) {
+			SizeClass::PBList::unlink (pbh);
+			destroy_page_block (pbh, spb);
+		}
 	}
 
 	void ThreadLocalHeap::thread_local_deallocate (Ptr ptr, SuperpageBlock & spb) {
-		// TODO empty conditions
 		if (spb.in_huge_alloc (ptr)) {
 			// Huge alloc
-			main_heap.destroy_superpage_huge_alloc (spb);
+			if (spb.all_page_blocks_unused ())
+				main_heap.destroy_superpage_block (spb);
+			else
+				main_heap.destroy_superpage_huge_alloc (spb);
 		} else {
 			PageBlockHeader & pbh = spb.page_block_header (ptr);
 			if (pbh.type == MemoryType::Small) {
 				// Small alloc
+				destroy_small_block (ptr, pbh, spb);
 			} else if (pbh.type == MemoryType::Medium) {
 				// Medium alloc
-				spb.free_page_block (pbh);
+				destroy_page_block (pbh, spb);
 			} else {
 				// Unreachable
 				ASSERT_FAIL ("PageBlockHeader is neither Small nor Medium");
@@ -604,7 +644,7 @@ namespace Allocator {
 		thread_local ThreadLocalHeap thread_heap{main_heap};
 
 		/* Interface
-		 */
+		*/
 		Block allocate (size_t size, size_t align) { return thread_heap.allocate (size, align); }
 		void deallocate (Ptr ptr) { thread_heap.deallocate (ptr); }
 	}
@@ -629,9 +669,9 @@ namespace Allocator {
 int main (void) {
 	namespace G = Givy::Allocator::GlobalInstance;
 
-	auto p = G::allocate (0xF356, 1);
+	//auto p = G::allocate (0xF356, 1);
 	// std::cout << p.ptr.as<void *> () << " " << p.size << std::endl;
-	*p.ptr.as<int *> () = 42;
-	G::deallocate (p.ptr);
+	//*p.ptr.as<int *> () = 42;
+	//G::deallocate (p.ptr);
 	return 0;
 }

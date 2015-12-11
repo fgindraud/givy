@@ -27,22 +27,22 @@ int main (void) {
 	{
 		// Check layouts
 		printf ("Mixed sized allocs\n");
-		size_t s1 = tracker.acquire_num (10);
-		size_t s2 = tracker.acquire_num (20);
-		size_t s3 = tracker.acquire_num (70);
+		size_t s1 = tracker.acquire (10);
+		size_t s2 = tracker.acquire (20);
+		size_t s3 = tracker.acquire (70);
 		tracker.print ();
 		printf ("%zu %zu %zu\n", s1, s2, s3);
 
 		printf ("Partial deallocation\n");
-		tracker.release_num (s2, 20);
-		tracker.release_num (s1, 10);
+		tracker.release (s2, 20);
+		tracker.release (s1, 10);
 		tracker.print ();
 
 		// Check allocation in fragmented area
 		printf ("Mixed alloc ; will fragment\n");
-		size_t s4 = tracker.acquire_num (15);
-		size_t s5 = tracker.acquire_num (20);
-		size_t s6 = tracker.acquire_num (10);
+		size_t s4 = tracker.acquire (15);
+		size_t s5 = tracker.acquire (20);
+		size_t s6 = tracker.acquire (10);
 		tracker.print ();
 		printf ("%zu %zu %zu\n", s4, s5, s6);
 
@@ -52,10 +52,10 @@ int main (void) {
 
 		// Test clean deallocation
 		printf ("Deallocation\n");
-		tracker.release_num (s3, 70);
-		tracker.release_num (s4, 15);
-		tracker.release_num (s5, 20);
-		tracker.release_num (s6, 10);
+		tracker.release (s3, 70);
+		tracker.release (s4, 15);
+		tracker.release (s5, 20);
+		tracker.release (s6, 10);
 		tracker.print ();
 	}
 	sep ();
@@ -74,7 +74,7 @@ int main (void) {
 				while (start == 0)
 					;
 				for (int j = 0; j < nb_alloc; ++j)
-					r[j] = tracker.acquire_num (10);
+					r[j] = tracker.acquire (10);
 			}, &allocs[i * nb_alloc]);
 		while (wait_count)
 			;

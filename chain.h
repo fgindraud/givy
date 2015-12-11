@@ -31,6 +31,7 @@ public:
 
 	// Default ctor ok ; others are deleted due to Element
 
+	// Headless insert/remove
 	static void insert_after (Element & to_insert, Element & e) { cross (&e, &to_insert); }
 	static void insert_before (Element & to_insert, Element & e) { cross (&to_insert, &e); }
 	static void unlink (Element & e) { extract (&e); }
@@ -55,6 +56,7 @@ public:
 		ASSERT_SAFE (!empty ());
 		extract (root.prev);
 	}
+	void remove (T & t) { unlink (t); }
 
 	class iterator : public std::iterator<std::bidirectional_iterator_tag, T> {
 	private:

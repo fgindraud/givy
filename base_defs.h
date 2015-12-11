@@ -93,9 +93,6 @@ bool operator!=(Ptr lhs, Ptr rhs) {
 struct Block {
 	Ptr ptr{nullptr};
 	size_t size{0};
-
-	// Test if it contains p
-	bool contains (Ptr p) const { return ptr <= p && p < ptr + size; }
 };
 
 /* ------------------------------ Low level memory management ---------------------- */
