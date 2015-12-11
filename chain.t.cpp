@@ -40,7 +40,8 @@ int main (void) {
 	std::cout << "Chain_1 = " << chain_1 << "\n";
 	std::cout << "Chain_2 = " << chain_2 << "\n";
 
-	std::cout << "Pop from Chain_2 = " << *chain_2.pop_front () << "\n";
+	std::cout << "Pop from Chain_2 = " << chain_2.front () << "\n";
+	chain_2.pop_front ();
 	std::cout << "Chain_1 = " << chain_1 << "\n";
 	std::cout << "Chain_2 = " << chain_2 << "\n";
 	return 0;

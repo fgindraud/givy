@@ -39,8 +39,9 @@ struct Ptr {
 	 */
 	uintptr_t p;
 
-	explicit Ptr (uintptr_t ptr) : p (ptr) {}
+	Ptr () = default; // Unitialized
 	Ptr (std::nullptr_t) : p (0) {}
+	explicit Ptr (uintptr_t ptr) : p (ptr) {}
 	template <typename T> explicit Ptr (T * ptr) : p (reinterpret_cast<uintptr_t> (ptr)) {}
 
 	template <typename T> T as (void) const { return reinterpret_cast<T> (p); }

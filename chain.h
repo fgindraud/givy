@@ -35,25 +35,25 @@ public:
 	static void insert_before (Element & to_insert, Element & e) { cross (&to_insert, &e); }
 	static void unlink (Element & e) { extract (&e); }
 
+	bool empty (void) const { return root.next == &root; }
+	T & front (void) {
+		ASSERT_SAFE (!empty ());
+		return *static_cast<T *> (root.next);
+	}
+	T & back (void) {
+		ASSERT_SAFE (!empty ());
+		return *static_cast<T *> (root.prev);
+	}
+
 	void push_front (T & t) { insert_after (t, root); }
 	void push_back (T & t) { insert_before (t, root); }
-	T * pop_front (void) {
-		Element * e = root.next;
-		if (e == &root) {
-			return nullptr;
-		} else {
-			extract (e);
-			return static_cast<T *> (e);
-		}
+	void pop_front (void) {
+		ASSERT_SAFE (!empty ());
+		extract (root.next);
 	}
-	T * pop_back (void) {
-		Element * e = root.prev;
-		if (e == &root) {
-			return nullptr;
-		} else {
-			extract (e);
-			return static_cast<T *> (e);
-		}
+	void pop_back (void) {
+		ASSERT_SAFE (!empty ());
+		extract (root.prev);
 	}
 
 	class iterator : public std::iterator<std::bidirectional_iterator_tag, T> {
@@ -122,13 +122,13 @@ private:
 
 template <typename T, size_t exact_size_slot_nb> struct QuickList {
 	/* Quicklist is used to quickly find an element with a specific attribute.
-	 * It uses a set of lists, that each store elements if their length() property has the same value
+	 * It uses a set of lists, that each store elements if their size() property has the same value
 	 * as the list's value.
 	 * The set of list is fixed, and is composed of exact_size_slot_nb lists for lengths from 1 to
 	 * exact_size_slot_nb, plus another one (always sorted in increasing order) for all bigger
-	 * lengths.
+	 * sizes.
 	 *
-	 * T must have a length () method
+	 * T must have a size () method
 	 */
 public:
 	struct Tag; // Custom tag for Chain
@@ -138,53 +138,55 @@ public:
 	// Default ctor ok ; others deleted due to Chain
 
 	void insert (T & element) {
-		size_t len = element.length ();
+		size_t len = element.size ();
 		ASSERT_SAFE (len > 0);
 		if (len <= exact_size_slot_nb) {
 			exact_size_slots[len - 1].push_front (element);
 		} else {
-			// Insert it sorted in increasing length
+			// Insert it sorted in increasing size
 			for (auto & t : bigger_sizes) {
-				if (t.length () >= len) {
+				if (t.size () >= len) {
 					ListType::insert_before (element, t);
 					return;
 				}
 			}
 			bigger_sizes.push_back (element);
 		}
-		stored_length += len;
+		stored_size += len;
 	}
 	T * take (size_t min_len) {
 		ASSERT_SAFE (min_len > 0);
 		// Search in exact size slots
 		for (size_t n = min_len; n <= exact_size_slot_nb; ++n) {
-			if (T * t = exact_size_slots[n - 1].pop_front ()) {
-				stored_length -= n;
+			if (!exact_size_slots[n - 1].empty ()) {
+				T * t = &exact_size_slots[n - 1].front ();
+				exact_size_slots[n - 1].pop_front ();
+				stored_size -= n;
 				return t;
 			}
 		}
 		// Search in higher sizes list
 		for (auto & t : bigger_sizes) {
-			if (t.length () >= min_len) {
+			if (t.size () >= min_len) {
 				ListType::unlink (t);
-				stored_length -= t.length ();
+				stored_size -= t.size ();
 				return &t;
 			}
 		}
 		return nullptr;
 	}
 	void remove (T & t) {
-		stored_length -= t.length ();
+		stored_size -= t.size ();
 		ListType::unlink (t);
 	}
 
-	// Cumulated length stored in the quicklist
-	size_t length (void) const { return stored_length; }
+	// Cumulated size stored in the quicklist
+	size_t size (void) const { return stored_size; }
 
 private:
 	ListType exact_size_slots[exact_size_slot_nb];
 	ListType bigger_sizes;
-	size_t stored_length{0};
+	size_t stored_size{0};
 };
 
 template <typename T, typename Tag = void> class ForwardChain {
@@ -204,13 +206,16 @@ private:
 public:
 	explicit ForwardChain (Element * head_ = nullptr) : head (head_) {}
 
-	T * pop (void) {
-		T * r = static_cast<T *> (head);
-		if (head != nullptr)
-			head = head->next;
-		return r;
+	bool empty (void) const { return head != nullptr; }
+	T & front (void) {
+		ASSERT_SAFE (!empty ());
+		return *static_cast<T *> (head);
 	}
-	void push (T & t) {
+	void pop_front (void) {
+		ASSERT_SAFE (!empty ());
+		head = head->next;
+	}
+	void push_front (T & t) {
 		Element & e = t;
 		e.next = head;
 		head = &e;
@@ -246,7 +251,7 @@ public:
 		std::atomic<Element *> head{nullptr};
 
 	public:
-		void push (T & t) {
+		void push_front (T & t) {
 			Element & e = t;
 			Element * expected = head.load (std::memory_order_relaxed);
 			do {
