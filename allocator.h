@@ -3,6 +3,7 @@
 
 #include <atomic>
 
+#include "reporting.h"
 #include "alloc_parts.h"
 #include "base_defs.h"
 #include "utility.h"
@@ -13,33 +14,58 @@
 namespace Givy {
 namespace Allocator {
 
+	/* ---------------------------- Type declaration ------------------------------ */
+
+	/* Forward declaration of types.
+	 * This is used to feed the typedef for templatized data structures (lists from chain.h)
+	 */
+	struct UnusedBlock;
 	struct PageBlockHeader;
 	class SuperpageBlock;
 	struct MainHeap;
 	class ThreadLocalHeap;
 
-	struct UnusedBlock : public ForwardChain<UnusedBlock>::Element {
-		Ptr ptr (void) const { return Ptr (this); }
-	};
-
+	/* Lists types typedef
+	 */
 	using BlockFreeList = ForwardChain<UnusedBlock>;
 	using ThreadRemoteFreeList = BlockFreeList::Atomic;
 	using PageBlockUnusedList = QuickList<PageBlockHeader, 10>;
+	using SuperpageBlockOwnedList = Chain<SuperpageBlock>;
 
-	/* Declarations */
+	class UnusedBlock : public BlockFreeList::Element {
+		/* This type represents a block of memory that is unused by the user.
+		 * Its main use is to link unused blocks in a BlockFreeList.
+		 *
+		 * It can optionally store a SuperpageBlock pointer ; this is used to prevent reaccessing the
+		 * superpage_tracker during remote frees as an optimization.
+		 */
+	private:
+		SuperpageBlock * const spb_ptr{nullptr};
+
+	public:
+		UnusedBlock () = default; // No associated SuperpageBlock
+		explicit UnusedBlock (SuperpageBlock & spb_) : spb_ptr (&spb_) {}
+
+		SuperpageBlock & spb (void) const {
+			ASSERT_SAFE (spb_ptr != nullptr);
+			return *spb_ptr;
+		}
+		Ptr ptr (void) const { return Ptr (this); } // Nice raw block ptr access
+	};
 
 	namespace Thresholds {
 		/* Size constants that delimit the behaviour of the allocator.
 		 *
 		 * Smallest represents the smallest possible block of allocation.
-		 * It cannot be smaller because we need every block to at least fit a pointer, when we chain
-		 * them in a freelist.
+		 * It cannot be smaller because we need every block to at least fit a UnusedBlock, to avoid
+		 * undefined behavior if we thread it in a BlockFreeList.
 		 *
 		 * SmallMedium is user defined, and is not very constrained.
+		 * MediumHigh is constrained by SuperpageBlock structure.
 		 */
 		constexpr size_t Smallest = Math::round_up_as_power_of_2 (sizeof (UnusedBlock));
 		constexpr size_t SmallMedium = Math::round_up_as_power_of_2 (VMem::PageSize);
-		// Threshold for MediumHigh is defined by superpageblock struct : later
+		// Threshold for MediumHigh is defined later
 	}
 
 	namespace SizeClass {
@@ -61,7 +87,11 @@ namespace Allocator {
 	};
 
 	enum class MemoryType {
-		Small,  // Under page size
+		/* Enum type used to represent the usage of a piece of memory.
+	   */
+
+		// Allocations
+		Small,  // Under the page size
 		Medium, // Between page and superpage size
 		Huge,   // Above superpage size
 
@@ -125,7 +155,7 @@ namespace Allocator {
 #endif
 	};
 
-	class SuperpageBlock : public Chain<SuperpageBlock>::Element {
+	class SuperpageBlock : public SuperpageBlockOwnedList::Element {
 		/* Superpage block (SPB) is the basic unit of memory allocation, and are always aligned to
 		 * SuperpageSize.
 		 * Superpage blocks are sequence of Superpages (size is configurable).
@@ -143,8 +173,10 @@ namespace Allocator {
 		 * superpage).
 		 *
 		 * In other words :
-		 * - a huge alloc SPB spans multiple superpages ; the last pages of the first superpage may be part of the huge alloc.
-		 * - a non huge alloc SPB has one superpage that is completely dedicated to small/medium allocs (except for the reserved part).
+		 * - a huge alloc SPB spans multiple superpages ; the last pages of the first superpage may be
+		 * part of the huge alloc.
+		 * - a non huge alloc SPB has one superpage that is completely dedicated to small/medium allocs
+		 * (except for the reserved part).
 		 * - a huge alloc SPB shrinks to a non huge page SPB if the huge alloc is destroyed.
 		 *
 		 * An empty SPB is always destroyed.
@@ -221,19 +253,28 @@ namespace Allocator {
 #endif
 	};
 
+	/* Define class constant out of class, due to use of sizeof() on class SuperpageBlock (which is
+	 * invalid inside SuperpageBlock definition as it is not a complete type yet).
+	 */
 	const size_t SuperpageBlock::HeaderSpacePages =
 	    Math::divide_up (sizeof (SuperpageBlock), VMem::PageSize);
 	const size_t SuperpageBlock::AvailablePages =
 	    VMem::SuperpagePageNB - SuperpageBlock::HeaderSpacePages;
 
 	namespace Thresholds {
+		// Complete definition of Thresholds.
 		constexpr size_t MediumHigh = SuperpageBlock::AvailablePages * VMem::PageSize;
 	}
 
 	struct MainHeap {
+		/* Central heap class.
+		 * Mainly hosts the superpage_tracker, and is responsible for SPB creation and destruction.
+		 *
+		 * TODO own orphan SPB with locked acccess ?
+		 */
 		using BootstrapAllocator = Parts::BackwardBumpPointer;
 
-		GasLayout layout;
+		const GasLayout layout;
 		BootstrapAllocator bootstrap_allocator;
 		SuperpageTracker<BootstrapAllocator> superpage_tracker;
 
@@ -249,7 +290,7 @@ namespace Allocator {
 		SuperpageBlock & create_superpage_block (ThreadLocalHeap * owner, size_t huge_alloc_size);
 		void destroy_superpage_block (SuperpageBlock & spb);
 		void destroy_superpage_huge_alloc (SuperpageBlock & spb);
-		SuperpageBlock & containing_superpage_block (Ptr inside);
+		SuperpageBlock & containing_superpage_block (Ptr inside) const;
 
 #ifdef ASSERT_SAFE_ENABLED
 		void print (void) const;
@@ -257,9 +298,18 @@ namespace Allocator {
 	};
 
 	class ThreadLocalHeap {
+		/* Thread (almost) private heap.
+		 * This class designed to be used as a threal_local variable.
+		 * One instance should be created for each thread, and destroyed when not needed anymore (thread
+		 * termination is a good time for that).
+		 *
+		 * It maintains a list of all privately owned SuperpageBlocks, that will be pushed to the MainHeap when the thread dies.
+		 *
+		 * Thread remote frees are managed by pushing them on the remote_freed_blocks list of the owner ThreadLocalHeap.
+		 */
 	private:
 		MainHeap & main_heap;
-		Chain<SuperpageBlock> owned_superpage_blocks;
+		SuperpageBlockOwnedList owned_superpage_blocks;
 		ThreadRemoteFreeList remote_freed_blocks;
 
 		SizeClass::PBList pb_by_sizeclass[SizeClass::nb_sizeclass];
@@ -267,12 +317,12 @@ namespace Allocator {
 	public:
 		/* Constructors and destructors are called on thread creation / destruction due to the use of
 		 * ThreadLocalHeap as a global threal_local variable.
-		 * A copy constructor is required by threal_local.
+		 * This class is not copy-able.
 		 */
 		explicit ThreadLocalHeap (MainHeap & main_heap_);
 		~ThreadLocalHeap ();
 
-		/* Interface
+		/* Allocation interface.
 		 */
 		Block allocate (size_t size, size_t align);
 		void deallocate (Ptr ptr);
@@ -291,11 +341,11 @@ namespace Allocator {
 
 	public:
 #ifdef ASSERT_SAFE_ENABLED
-		void print (bool print_main_heap = true) const;
+		void print (bool print_main_heap) const;
 #endif
 	};
 
-	/* IMPL PageBlockHeader */
+	/* ---------------------------- PageBlockHeader IMPL -------------------------- */
 
 	void PageBlockHeader::format (MemoryType type_, size_t pb_size, PageBlockHeader * head_) {
 		type = type_;
@@ -358,7 +408,7 @@ namespace Allocator {
 	}
 #endif
 
-	/* IMPL SuperpageBlock */
+	/* ---------------------------- SuperpageBlock IMPL --------------------------- */
 
 	SuperpageBlock::SuperpageBlock (size_t superpage_nb_, size_t huge_alloc_page_nb,
 	                                ThreadLocalHeap * owner_)
@@ -519,7 +569,7 @@ namespace Allocator {
 	}
 #endif
 
-	/* IMPL MainHeap */
+	/* ---------------------------- MainHeap IMPL --------------------------------- */
 
 	MainHeap::MainHeap (const GasLayout & layout_)
 	    : layout (layout_),
@@ -562,7 +612,7 @@ namespace Allocator {
 		spb.destroy_huge_alloc ();
 	}
 
-	SuperpageBlock & MainHeap::containing_superpage_block (Ptr inside) {
+	SuperpageBlock & MainHeap::containing_superpage_block (Ptr inside) const {
 		return *superpage_tracker.get_block_start (inside).as<SuperpageBlock *> ();
 	}
 
@@ -582,7 +632,7 @@ namespace Allocator {
 	}
 #endif
 
-	/* IMPL ThreadLocalHeap */
+	/* ---------------------------- ThreadLocalHeap IMPL -------------------------- */
 
 	ThreadLocalHeap::ThreadLocalHeap (MainHeap & main_heap_) : main_heap (main_heap_) {
 		DEBUG_TEXT ("[%p]ThreadLocalHeap()\n", this);
@@ -649,9 +699,11 @@ namespace Allocator {
 
 			/* Push the block on the remote TLH freelist
 			 * The block is guaranteed to fit at least a UnusedBlock freelist link.
-			 * TODO add SPB pointer to UnusedBlock to avoid computing it again ?
+			 * Also store the spb reference to avoid accessing the superpage_tracker again.
+			 *
+			 * FIXME may fail if ptr is not at the start of allocation
 			 */
-			UnusedBlock * blk = new (ptr) UnusedBlock;
+			UnusedBlock * blk = new (ptr) UnusedBlock (spb);
 			owner->remote_freed_blocks.push_front (*blk);
 		}
 	}
@@ -746,11 +798,11 @@ namespace Allocator {
 	}
 
 	void ThreadLocalHeap::process_thread_remote_frees (void) {
-		ForwardChain<UnusedBlock> unused_blocks = remote_freed_blocks.take_all ();
+		BlockFreeList unused_blocks = remote_freed_blocks.take_all ();
 		for (auto it = unused_blocks.begin (); it != unused_blocks.end ();) {
 			Ptr p = it->ptr ();
+			SuperpageBlock & spb = it->spb ();
 			it++; // Get next element before destroying the current element
-			SuperpageBlock & spb = main_heap.containing_superpage_block (p);
 			thread_local_deallocate (p, spb);
 		}
 	}

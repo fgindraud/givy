@@ -3,6 +3,7 @@
 
 #include <cerrno>
 #include <memory>
+#include <cstdint>
 
 // system specific
 #include <sys/mman.h>
@@ -156,6 +157,9 @@ template <> constexpr size_t BitMask<unsigned long long>::count_zeros (unsigned 
 /* ----------------------------- Additionnal math utils ---------------------------- */
 
 namespace Math {
+	
+	// Power of 2
+	
 	template <typename T> constexpr bool is_power_of_2 (T x) {
 		static_assert (std::numeric_limits<T>::is_integer, "T must be an integer");
 		return x > 0 && (x & (x - 1)) == 0;
@@ -175,10 +179,44 @@ namespace Math {
 		return log_2_inf (x - 1) + 1;
 	}
 
-	constexpr size_t round_up_as_power_of_2 (size_t x) {
-		return size_t (1) << log_2_sup (x);
+	constexpr size_t round_up_as_power_of_2 (size_t x) { return size_t (1) << log_2_sup (x); }
+	
+	// Binary representation
+
+	constexpr size_t representation_bits (size_t x) {
+		/* Give the number of bits needed to represent x.
+		 * By convention, if x is 0, answer 1.
+		 */
+		if (x == 0)
+			return 1;
+		else
+			return log_2_inf (x) + 1;
+	}
+
+	template <typename IntType> constexpr bool can_represent (size_t n) {
+		static_assert (std::numeric_limits<IntType>::is_integer, "IntType must be an integer");
+		static_assert (!std::numeric_limits<IntType>::is_signed, "IntType must be unsigned");
+		return n <= std::numeric_limits<IntType>::max ();
 	}
 }
+
+/* ------------------------------------ Bound int types ---------------------------- */
+
+namespace BoundIntDetail {
+	template <size_t N> struct UintSelector {
+		static_assert (N <= 64, "N is above maximum supported int size");
+		using Type = typename UintSelector<N + 1>::Type;
+	};
+	template <> struct UintSelector<8> { using Type = uint8_t; };
+	template <> struct UintSelector<16> { using Type = uint16_t; };
+	template <> struct UintSelector<32> { using Type = uint32_t; };
+	template <> struct UintSelector<64> { using Type = uint64_t; };
+}
+
+/* BoundUint<N> provides the unsigned integer type that can represent [0, N]
+*/
+template <size_t MaxValue>
+using BoundUint = typename BoundIntDetail::UintSelector<Math::representation_bits (MaxValue)>::Type;
 
 /* ------------------------------ Low level memory management ---------------------- */
 

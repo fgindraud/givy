@@ -1,9 +1,16 @@
 std::thread::hardware_concurrency ()
 
 Allocator:
-- better sizeclasses
-	- better sizeclass structures (less metadata)
+- TLH destruction and orphan SPB << 2
+- sizeclasses
+	- better sizeclass structures (less metadata) << 1
+	- better sizeclass sizes ?
 - reduce superpage header
 	- size : reduce size_t usage when possible
 	- better pack page block headers for cache locality (struct of arrays ?)
-- optimize deallocation (remote/local)
+- optimize deallocation (local) << 3
+- virtual mapping overhaul:
+	- class that implements setup/map/destroy/cleanup
+	- eager (current) version, setup/cleanup=null, map/destroy=mmap/munmap
+	- lazy version, setup/cleanup=mmap/munmap gas, map=null, destroy=discard ?
+- properly support deallocate inside block (atomic get_containing_block)
