@@ -1,1 +1,9 @@
 std::thread::hardware_concurrency ()
+
+Allocator:
+- better sizeclasses
+	- better sizeclass structures (less metadata)
+- reduce superpage header
+	- size : reduce size_t usage when possible
+	- better pack page block headers for cache locality (struct of arrays ?)
+- optimize deallocation (remote/local)

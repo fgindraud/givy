@@ -3,21 +3,19 @@
 CPPFLAGS = -std=c++14 
 CPPFLAGS += -fno-rtti -fno-exceptions
 CPPFLAGS += -O3 -Wall -Wextra
+CPPFLAGS += -pthread
+CPPFLAGS += -g -Og
 
 FILES = 
 
-all: test_main test_spt test_chain
+TESTS_CPP = $(wildcard *.t.cpp)
+TESTS_EXEC = $(TESTS_CPP:%.t.cpp=test_%)
 
-test_main: region.cpp $(FILES) $(wildcard *.h)
-	g++ $(CPPFLAGS) -o $@ $< $(FILES)
+all: $(TESTS_EXEC)
 
-test_spt: superpage_tracker.t.cpp $(FILES) $(wildcard *.h)
-	g++ $(CPPFLAGS) -o $@ $< $(FILES) -pthread
-test_chain: chain.t.cpp $(FILES) $(wildcard *.h)
-	g++ $(CPPFLAGS) -o $@ $< $(FILES) -pthread
+test_%: %.t.cpp $(wildcard *.h)
+	g++ $(CPPFLAGS) -o $@ $<
 
 clean:
-	$(RM) $(wildcard test_*)
+	$(RM) $(TESTS_EXEC)
 
-disassemble: test_main
-	gdb -batch -ex 'disassemble main' $<

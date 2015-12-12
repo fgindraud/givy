@@ -1,4 +1,5 @@
-#define ASSERT_LEVEL_SAFE
+#ifndef ALLOCATOR_H
+#define ALLOCATOR_H
 
 #include <atomic>
 
@@ -12,21 +13,10 @@
 namespace Givy {
 namespace Allocator {
 
-	enum class MemoryType {
-		Small,  // Under page size
-		Medium, // Between page and superpage size
-		Huge,   // Above superpage size
-		// Contained Alloc means either Small of Medium
-
-		// Internal definitions
-		Unused,  // Unused space, can be allocated
-		Reserved // Used internally, not available for allocation
-	};
-
 	struct PageBlockHeader;
 	class SuperpageBlock;
-	class ThreadLocalHeap;
 	struct MainHeap;
+	class ThreadLocalHeap;
 
 	struct UnusedBlock : public ForwardChain<UnusedBlock>::Element {
 		Ptr ptr (void) const { return Ptr (this); }
@@ -53,7 +43,10 @@ namespace Allocator {
 	}
 
 	namespace SizeClass {
-		using PBList = Chain<PageBlockHeader>;
+		// List of PageBlockHeader for a given sizeclass
+		struct PBListTag;
+		using PBList = Chain<PageBlockHeader, PBListTag>;
+
 		using Id = size_t;
 
 		constexpr size_t min_sizeclass_log = Math::log_2_sup (Thresholds::Smallest);
@@ -67,18 +60,44 @@ namespace Allocator {
 		// TODO improve sizeclass info
 	};
 
+	enum class MemoryType {
+		Small,  // Under page size
+		Medium, // Between page and superpage size
+		Huge,   // Above superpage size
+
+		// Internal definitions
+		Unused,  // Unused space, can be allocated
+		Reserved // Used internally, not available for allocation
+	};
+
 	struct PageBlockHeader : public PageBlockUnusedList::Element, public SizeClass::PBList::Element {
-	public:
-		/* Represent page block spans ; will be set by format()
+		/* PageBlockHeader is used to represent Page blocks.
+		 * Page blocks are the unit of memory in a SuperpageBlock.
+		 * Page blocks have a type that represents the use of its memory.
+		 *
 		 * Every page has an associated PageBlockHeader, but only the first PageBlockHeader of a page
-		 * block is used.
+		 * block is actually used.
+		 * All other PageBlockHeader of a page block will redirect to the first one with the head
+		 * pointer.
+		 *
+		 * Any active PageBlockHeader of type Unused must be in the PageBlockUnusedList of its
+		 * SuperpageBlock.
+		 *
+		 * An active PageBlockHeader of type Small is the only kind of PageBlockHeader that can be in a
+		 * SizeClass::PBList.
+		 * It will be in the list of its sizeclass if and only if it is neither full nor empty.
+		 *
+		 * Unused page blocks which are neighbours will be merged.
+		 */
+	public:
+		/* Represent page block layout ; will be set by format()
 		 */
 		MemoryType type;        // Type of page block
 		size_t block_page_nb;   // Size of page block
 		PageBlockHeader * head; // pointer to active header representing the page block
 
 		// Pointer to associated page (set by SuperpageBlock())
-		Ptr page;
+		Ptr page; // FIXME recompute everytime ?
 
 		struct {
 			size_t block_size;
@@ -100,15 +119,39 @@ namespace Allocator {
 
 		bool has_small_block (void) const;
 		bool has_all_small_blocks (void) const;
+
+#ifdef ASSERT_SAFE_ENABLED
+		void print (void) const;
+#endif
 	};
 
 	class SuperpageBlock : public Chain<SuperpageBlock>::Element {
-		/* Structure of a superpage :
-		 * - superpage header, followed by unused space to align to page boundaries,
+		/* Superpage block (SPB) is the basic unit of memory allocation, and are always aligned to
+		 * SuperpageSize.
+		 * Superpage blocks are sequence of Superpages (size is configurable).
+		 * The SuperpageBlock class data is put at each start of Superpage block, and holds metadata for
+		 * the entire SPB.
+		 *
+		 * The first superpage of each SPB can be split into PageBlocks.
+		 * All other superpages, if present, form a unique huge alloc.
+		 *
+		 * Memory structure of a superpage block :
+		 * - superpage header (this class), followed by unused space to align to page boundaries,
 		 * - sequence of pages for small & medium allocations,
 		 * - last pages may be part of a huge_alloc,
 		 * - a huge alloc will also span over the next superpages, which have no header (managed by this
 		 * superpage).
+		 *
+		 * In other words :
+		 * - a huge alloc SPB spans multiple superpages ; the last pages of the first superpage may be part of the huge alloc.
+		 * - a non huge alloc SPB has one superpage that is completely dedicated to small/medium allocs (except for the reserved part).
+		 * - a huge alloc SPB shrinks to a non huge page SPB if the huge alloc is destroyed.
+		 *
+		 * An empty SPB is always destroyed.
+		 *
+		 * ThreadLocalHeap lists:
+		 * - SPB owned by a ThreadLocalHeap are always in the owned_superpage_blocks list
+		 * TODO orphaned, optimization for full/not_full SPB
 		 */
 	private:
 		/* Superpage block header.
@@ -133,6 +176,7 @@ namespace Allocator {
 
 		/* Creation / destruction */
 		SuperpageBlock (size_t superpage_nb_, size_t huge_alloc_page_nb, ThreadLocalHeap * owner_);
+		~SuperpageBlock ();
 
 		/* info */
 		size_t size (void) const { return superpage_nb; }
@@ -141,6 +185,7 @@ namespace Allocator {
 
 		static SuperpageBlock & from_pointer_in_first_superpage (Ptr inside);
 		static SuperpageBlock & from_pbh (PageBlockHeader & pbh);
+		static const SuperpageBlock & from_pbh (const PageBlockHeader & pbh);
 
 		/* Huge alloc management */
 		bool in_huge_alloc (Ptr p) const;
@@ -154,6 +199,7 @@ namespace Allocator {
 		Block page_block_memory (const PageBlockHeader & pbh) const;
 		PageBlockHeader & page_block_header (Ptr p);
 		bool all_page_blocks_unused (void) const;
+		size_t page_block_index (const PageBlockHeader & pbh) const;
 
 		/* Owner */
 		ThreadLocalHeap * get_owner (void) const { return owner; }
@@ -168,6 +214,11 @@ namespace Allocator {
 		void format_pbh (PageBlockHeader * from, PageBlockHeader * to, MemoryType type);
 		void format_pbh (PageBlockHeader * from, size_t size, MemoryType type);
 		void format_pbh (size_t from, size_t to, MemoryType type);
+
+	public:
+#ifdef ASSERT_SAFE_ENABLED
+		void print (void) const;
+#endif
 	};
 
 	const size_t SuperpageBlock::HeaderSpacePages =
@@ -199,6 +250,10 @@ namespace Allocator {
 		void destroy_superpage_block (SuperpageBlock & spb);
 		void destroy_superpage_huge_alloc (SuperpageBlock & spb);
 		SuperpageBlock & containing_superpage_block (Ptr inside);
+
+#ifdef ASSERT_SAFE_ENABLED
+		void print (void) const;
+#endif
 	};
 
 	class ThreadLocalHeap {
@@ -220,8 +275,8 @@ namespace Allocator {
 		/* Interface
 		 */
 		Block allocate (size_t size, size_t align);
-		void deallocate (Block blk); // Optimized, TODO
 		void deallocate (Ptr ptr);
+		void deallocate (Block blk);
 
 	private:
 		SuperpageBlock & create_superpage_block (size_t huge_alloc_size = 0);
@@ -233,6 +288,11 @@ namespace Allocator {
 
 		void thread_local_deallocate (Ptr ptr, SuperpageBlock & spb);
 		void process_thread_remote_frees (void);
+
+	public:
+#ifdef ASSERT_SAFE_ENABLED
+		void print (bool print_main_heap = true) const;
+#endif
 	};
 
 	/* IMPL PageBlockHeader */
@@ -280,11 +340,31 @@ namespace Allocator {
 		return small_blocks.nb_unused == small_blocks.nb_carved;
 	}
 
+#ifdef ASSERT_SAFE_ENABLED
+	void PageBlockHeader::print (void) const {
+		if (type == MemoryType::Small)
+			printf ("Small [szc=%zu,bs=%zu,cvd=%zu,un=%zu]\n", SizeClass::id (small_blocks.block_size),
+			        small_blocks.block_size, small_blocks.nb_carved, small_blocks.nb_unused);
+		else if (type == MemoryType::Medium)
+			printf ("Medium [S=%zu]\n", size ());
+		else if (type == MemoryType::Huge)
+			printf ("Huge (start) [S=%zu]\n", size ());
+		else if (type == MemoryType::Unused)
+			printf ("Unused [S=%zu]\n", size ());
+		else if (type == MemoryType::Reserved)
+			printf ("Reserved [S=%zu]\n", size ());
+		else
+			printf ("<error> [Type=%ld]\n", static_cast<long> (type));
+	}
+#endif
+
 	/* IMPL SuperpageBlock */
 
 	SuperpageBlock::SuperpageBlock (size_t superpage_nb_, size_t huge_alloc_page_nb,
 	                                ThreadLocalHeap * owner_)
 	    : owner (owner_), superpage_nb (superpage_nb_) {
+		DEBUG_TEXT ("[%p]SuperpageBlock()\n", this);
+
 		// Compute huge page limit in first superpage
 		ASSERT_SAFE (superpage_nb * VMem::SuperpagePageNB >= huge_alloc_page_nb + HeaderSpacePages);
 		huge_alloc_pb_index = superpage_nb * VMem::SuperpagePageNB - huge_alloc_page_nb;
@@ -300,6 +380,17 @@ namespace Allocator {
 		unused.insert (pbh_table[HeaderSpacePages]); // Add initial unused page block to list
 	}
 
+	SuperpageBlock::~SuperpageBlock () {
+#ifdef ASSERT_SAFE_ENABLED
+		/* TODO for now, in SAFE build, allocator termination is an error if some blocks have not been
+		 * deallocated.
+		 */
+		ASSERT_SAFE (unused.size () == AvailablePages);
+		unused.take (AvailablePages); // make sure to empty unused list
+#endif
+		DEBUG_TEXT ("[%p]~SuperpageBlock()\n", this);
+	}
+
 	bool SuperpageBlock::completely_unused (void) const {
 		return size () == 1 && all_page_blocks_unused ();
 	}
@@ -309,6 +400,10 @@ namespace Allocator {
 		return *inside.align (VMem::SuperpageSize).as<SuperpageBlock *> ();
 	}
 	SuperpageBlock & SuperpageBlock::from_pbh (PageBlockHeader & pbh) {
+		// Pbh are stored in first superpage
+		return from_pointer_in_first_superpage (Ptr (&pbh));
+	}
+	const SuperpageBlock & SuperpageBlock::from_pbh (const PageBlockHeader & pbh) {
 		// Pbh are stored in first superpage
 		return from_pointer_in_first_superpage (Ptr (&pbh));
 	}
@@ -330,9 +425,8 @@ namespace Allocator {
 		 * As the huge alloc trailing page block was formatted to a valid page block (but with Huge
 		 * type), we can use free_page_block directly.
 		 */
-		PageBlockHeader & last = pbh_table[VMem::SuperpagePageNB - 1];
-		if (last.type == MemoryType::Huge)
-			free_page_block (*last.head);
+		if (huge_alloc_pb_index < VMem::SuperpagePageNB)
+			free_page_block (pbh_table[huge_alloc_pb_index]);
 
 		// Trim
 		superpage_nb = 1;
@@ -380,8 +474,7 @@ namespace Allocator {
 	}
 
 	Block SuperpageBlock::page_block_memory (const PageBlockHeader & pbh) const {
-		size_t pb_index = &pbh - pbh_table;
-		return {ptr () + pb_index * VMem::PageSize, pbh.size () * VMem::PageSize};
+		return {ptr () + page_block_index (pbh) * VMem::PageSize, pbh.size () * VMem::PageSize};
 	}
 
 	PageBlockHeader & SuperpageBlock::page_block_header (Ptr p) {
@@ -396,6 +489,10 @@ namespace Allocator {
 		return unused.size () == AvailablePages;
 	}
 
+	size_t SuperpageBlock::page_block_index (const PageBlockHeader & pbh) const {
+		return &pbh - pbh_table;
+	}
+
 	void SuperpageBlock::format_pbh (PageBlockHeader * from, PageBlockHeader * to, MemoryType type) {
 		size_t s = to - from;
 		for (auto pbh = from; pbh < to; ++pbh)
@@ -408,15 +505,29 @@ namespace Allocator {
 		format_pbh (pbh_table + from, pbh_table + to, type);
 	}
 
+#ifdef ASSERT_SAFE_ENABLED
+	void SuperpageBlock::print (void) const {
+		printf ("S=%zu", size ());
+		if (size () > 1)
+			printf (" (huge alloc=%zu pages)", VMem::SuperpagePageNB * size () - huge_alloc_pb_index);
+		printf ("\n");
+
+		for (size_t i = 0; i < VMem::SuperpagePageNB; i += pbh_table[i].size ()) {
+			printf ("\t[%zu-%zu]", i, i + pbh_table[i].size ());
+			pbh_table[i].print ();
+		}
+	}
+#endif
+
 	/* IMPL MainHeap */
 
 	MainHeap::MainHeap (const GasLayout & layout_)
 	    : layout (layout_),
 	      bootstrap_allocator (layout.start),
 	      superpage_tracker (layout, bootstrap_allocator) {
-		DEBUG_TEXT ("Allocator created\n");
+		DEBUG_TEXT ("MainHeap()\n");
 	}
-	MainHeap::~MainHeap () { DEBUG_TEXT ("Allocator destroyed\n"); }
+	MainHeap::~MainHeap () { DEBUG_TEXT ("~MainHeap()\n"); }
 
 	SuperpageBlock & MainHeap::create_superpage_block (ThreadLocalHeap * owner,
 	                                                   size_t huge_alloc_size) {
@@ -443,7 +554,7 @@ namespace Allocator {
 		// Destroy the trailing superpages
 		size_t spb_size = spb.size ();
 		ASSERT_STD (spb_size > 1);
-		Ptr spb_start (&spb);
+		Ptr spb_start = spb.ptr ();
 		superpage_tracker.trim (layout.superpage_num (spb_start), spb_size);
 		VMem::unmap_checked (spb_start + VMem::SuperpageSize, (spb_size - 1) * VMem::SuperpageSize);
 
@@ -455,14 +566,30 @@ namespace Allocator {
 		return *superpage_tracker.get_block_start (inside).as<SuperpageBlock *> ();
 	}
 
+#ifdef ASSERT_SAFE_ENABLED
+	void MainHeap::print (void) const {
+		printf ("Layout:\n");
+		printf ("\tnodes (local node): %d (%d)\n", layout.nb_node, layout.local_node);
+		printf ("\tsuperpage by node (total): %zu (%zu)\n", layout.superpage_by_node,
+		        layout.superpage_total);
+		printf ("\tnode area limits (sp index): [0");
+		for (auto n = 0; n < layout.nb_node; ++n)
+			printf (",%zu", layout.node_area_end_superpage_num (n));
+		printf ("]\n");
+
+		printf ("SuperpageTracker:\n");
+		superpage_tracker.print ();
+	}
+#endif
+
 	/* IMPL ThreadLocalHeap */
 
 	ThreadLocalHeap::ThreadLocalHeap (MainHeap & main_heap_) : main_heap (main_heap_) {
-		DEBUG_TEXT ("TLH created = %p\n", this);
+		DEBUG_TEXT ("[%p]ThreadLocalHeap()\n", this);
 	}
 
 	ThreadLocalHeap::~ThreadLocalHeap () {
-		DEBUG_TEXT ("TLH destroyed = %p\n", this);
+		DEBUG_TEXT ("[%p]~ThreadLocalHeap()\n", this);
 
 		// Disown pages
 		// TODO put in list ?
@@ -529,6 +656,11 @@ namespace Allocator {
 		}
 	}
 
+	void ThreadLocalHeap::deallocate (Block blk) {
+		// TODO optimize for small/medium alloc, no call to SPT
+		deallocate (blk.ptr);
+	}
+
 	SuperpageBlock & ThreadLocalHeap::create_superpage_block (size_t huge_alloc_size) {
 		SuperpageBlock & spb = main_heap.create_superpage_block (this, huge_alloc_size);
 		owned_superpage_blocks.push_back (spb);
@@ -544,7 +676,6 @@ namespace Allocator {
 		// Try to take from existing superpage blocks
 		for (auto & spb : owned_superpage_blocks)
 			if (PageBlockHeader * pbh = spb.allocate_page_block (nb_page, type)) {
-				// TODO opt : move spb to top of list
 				return *pbh;
 			}
 		// If failed : Take from a new superpage
@@ -582,10 +713,13 @@ namespace Allocator {
 	}
 
 	void ThreadLocalHeap::destroy_small_block (Ptr ptr, PageBlockHeader & pbh, SuperpageBlock & spb) {
+		bool had_no_block = !pbh.has_small_block ();
 		pbh.put_small_block (ptr);
 		if (pbh.has_all_small_blocks ()) {
 			SizeClass::PBList::unlink (pbh);
 			destroy_page_block (pbh, spb);
+		} else if (had_no_block) {
+			// FIXME add to sizeclass list
 		}
 	}
 
@@ -606,7 +740,7 @@ namespace Allocator {
 				destroy_page_block (pbh, spb);
 			} else {
 				// Unreachable
-				ASSERT_FAIL ("PageBlockHeader is neither Small nor Medium");
+				ASSERT_SAFE_FAIL ("PageBlockHeader is neither Small nor Medium");
 			}
 		}
 	}
@@ -620,58 +754,33 @@ namespace Allocator {
 			thread_local_deallocate (p, spb);
 		}
 	}
-}
-}
 
-namespace Givy {
-namespace Allocator {
-	namespace GlobalInstance {
-		// Called at program startup (before main)
-		GasLayout init (void) {
-			VMem::runtime_asserts ();
-
-			/* Determining program break, placing Givy after (+ some pages in the middle) */
-			return {Ptr (sbrk (0)) + 1000 * VMem::PageSize, // start
-			        1000 * VMem::PageSize,                  // space_by_node
-			        4,                                      // nb_node
-			        0};                                     // local node
+#ifdef ASSERT_SAFE_ENABLED
+	void ThreadLocalHeap::print (bool print_main_heap) const {
+		if (print_main_heap) {
+			printf ("====== MainHeap ======\n");
+			main_heap.print ();
 		}
 
-		/* Due to c++ thread_local semantics, ThreadLocalHeap objects will be constructed/destructed
-		 * at every thread start/end
-		 */
-		MainHeap main_heap{init ()};
-		thread_local ThreadLocalHeap thread_heap{main_heap};
-
-		/* Interface
-		*/
-		Block allocate (size_t size, size_t align) { return thread_heap.allocate (size, align); }
-		void deallocate (Ptr ptr) { thread_heap.deallocate (ptr); }
+		printf ("====== ThreadLocalHeap [%p] ======\n", this);
+		printf ("Owned SuperpageBlocks:\n");
+		for (auto & spb : owned_superpage_blocks) {
+			printf ("[%zu]", main_heap.layout.superpage_num (spb.ptr ()));
+			spb.print ();
+		}
+		printf ("SizeClass lists:\n");
+		for (SizeClass::Id i = 0; i < SizeClass::nb_sizeclass; ++i) {
+			printf ("[%zu,bs=%zu]", i, SizeClass::block_size (i));
+			for (auto & pbh : pb_by_sizeclass[i]) {
+				auto & spb = SuperpageBlock::from_pbh (pbh);
+				printf (" (%zu,%zu)", main_heap.layout.superpage_num (spb.ptr ()),
+				        spb.page_block_index (pbh));
+			}
+			printf ("\n");
+		}
 	}
+#endif
 }
 }
 
-/* Superpage block
- * - has huge alloc ?
- *   - Y: multi superpage, last pages of first superpage may be part of the huge alloc
- *   - N: all non-reserved pages can be used, one superpage
- *   - a huge-alloced SPB will become a standard 1-superpage SPB if the huge alloc is destroyed
- * - in tlh list ?
- *   - Y: if there are unallocated pages
- *   - N: all pages allocated (huge alloc included)
- *   - N: no pages allocated & no huge alloc: destroy the superpage
- *   - what of orhpaned SPB (but full) ? two lists, one for TLH ownership, one for non-full SPB ?
- *
- */
-
-#include <iostream>
-
-int main (void) {
-	namespace G = Givy::Allocator::GlobalInstance;
-
-	//auto p = G::allocate (0xF356, 1);
-	// std::cout << p.ptr.as<void *> () << " " << p.size << std::endl;
-	//*p.ptr.as<int *> () = 42;
-	//G::deallocate (p.ptr);
-	return 0;
-}
+#endif

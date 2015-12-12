@@ -71,8 +71,10 @@
 
 #ifdef ASSERT_SAFE_ENABLED
 #define ASSERT_SAFE(cond) ASSERT_INTERNAL (cond)
+#define ASSERT_SAFE_FAIL(text) ASSERT_FAIL (text)
 #else
 #define ASSERT_SAFE(cond)
+#define ASSERT_SAFE_FAIL(text)
 #endif
 
 #ifdef ASSERT_STD_ENABLED
@@ -98,3 +100,4 @@
 #endif
 
 #endif
+

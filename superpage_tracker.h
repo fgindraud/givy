@@ -68,7 +68,9 @@ namespace Allocator {
 		}
 		bool is_mapped (Ptr ptr) const { return is_mapped (layout.superpage_num (ptr)); }
 
+#ifdef ASSERT_SAFE_ENABLED
 		void print (int superpage_by_line = 200) const;
+#endif
 
 	private:
 		struct Index {
@@ -346,6 +348,7 @@ namespace Allocator {
 		}
 	}
 
+#ifdef ASSERT_SAFE_ENABLED
 	template <typename Alloc> void SuperpageTracker<Alloc>::print (int superpage_by_line) const {
 		const int indicator_interval = 10;
 		const int line_prefix_size = 10;
@@ -392,6 +395,7 @@ namespace Allocator {
 		}
 		printf ("\n");
 	}
+#endif
 }
 }
 

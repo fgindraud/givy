@@ -21,7 +21,15 @@ public:
 		// Initialise as a singleton link (loops on itself)
 		Element () { reset (); }
 		void reset (void) { prev = next = this; }
-		~Element () { ASSERT_SAFE (next == this); /* ensure it has been removed from any list */ }
+		~Element () {
+			/* FIXME
+			 * This assert requires that lists be empty at destruction.
+			 * In particular, in the allocator, it requires that everything is deallocated before allocator destruction.
+			 * This is very constraining, but useful for testing to detect metadata failures.
+			 * It should be removed for working build.
+			 */
+			ASSERT_SAFE (next == this);
+		}
 		// Copy/move is meaningless
 		Element (const Element &) = delete;
 		Element & operator=(const Element &) = delete;
@@ -58,38 +66,45 @@ public:
 	}
 	void remove (T & t) { unlink (t); }
 
-	class iterator : public std::iterator<std::bidirectional_iterator_tag, T> {
+	/* iterator/const_iterator
+	 */
+	template <typename Type, typename Elem>
+	class iterator_base : public std::iterator<std::bidirectional_iterator_tag, Type> {
 	private:
-		Element * current;
+		Elem * current;
 
 	public:
-		iterator (Element * p = nullptr) : current (p) {}
-		bool operator==(iterator other) const { return current == other.current; }
-		bool operator!=(iterator other) const { return current != other.current; }
-		iterator & operator++(void) {
+		iterator_base (Elem * p = nullptr) : current (p) {}
+		bool operator==(iterator_base other) const { return current == other.current; }
+		bool operator!=(iterator_base other) const { return current != other.current; }
+		iterator_base & operator++(void) {
 			current = current->next;
 			return *this;
 		}
-		iterator & operator--(void) {
+		iterator_base & operator--(void) {
 			current = current->prev;
 			return *this;
 		}
-		iterator operator++(int) {
+		iterator_base operator++(int) {
 			auto cpy = *this;
 			++*this;
 			return cpy;
 		}
-		iterator operator--(int) {
+		iterator_base operator--(int) {
 			auto cpy = *this;
 			--*this;
 			return cpy;
 		}
-		T & operator*(void) const { return *static_cast<T *> (current); }
-		T * operator->(void) const { return static_cast<T *> (current); }
+		Type & operator*(void) const { return *static_cast<Type *> (current); }
+		Type * operator->(void) const { return static_cast<Type *> (current); }
 	};
+	using iterator = iterator_base<T, Element>;
+	using const_iterator = iterator_base<const T, const Element>;
 
 	iterator begin (void) { return {root.next}; }
 	iterator end (void) { return {&root}; }
+	const_iterator begin (void) const { return {root.next}; }
+	const_iterator end (void) const { return {&root}; }
 
 private:
 	/* Element structs forms a double linked circular chain. */
@@ -140,26 +155,26 @@ public:
 	// Default ctor ok ; others deleted due to Chain
 
 	void insert (T & element) {
-		size_t len = element.size ();
-		ASSERT_SAFE (len > 0);
-		if (len <= exact_size_slot_nb) {
-			exact_size_slots[len - 1].push_front (element);
+		size_t sz = element.size ();
+		ASSERT_SAFE (sz > 0);
+		stored_size += sz;
+		if (sz <= exact_size_slot_nb) {
+			exact_size_slots[sz - 1].push_front (element);
 		} else {
 			// Insert it sorted in increasing size
 			for (auto & t : bigger_sizes) {
-				if (t.size () >= len) {
+				if (t.size () >= sz) {
 					ListType::insert_before (element, t);
 					return;
 				}
 			}
 			bigger_sizes.push_back (element);
 		}
-		stored_size += len;
 	}
-	T * take (size_t min_len) {
-		ASSERT_SAFE (min_len > 0);
+	T * take (size_t min_sz) {
+		ASSERT_SAFE (min_sz > 0);
 		// Search in exact size slots
-		for (size_t n = min_len; n <= exact_size_slot_nb; ++n) {
+		for (size_t n = min_sz; n <= exact_size_slot_nb; ++n) {
 			if (!exact_size_slots[n - 1].empty ()) {
 				T * t = &exact_size_slots[n - 1].front ();
 				exact_size_slots[n - 1].pop_front ();
@@ -169,7 +184,7 @@ public:
 		}
 		// Search in higher sizes list
 		for (auto & t : bigger_sizes) {
-			if (t.size () >= min_len) {
+			if (t.size () >= min_sz) {
 				ListType::unlink (t);
 				stored_size -= t.size ();
 				return &t;
@@ -208,7 +223,7 @@ private:
 public:
 	explicit ForwardChain (Element * head_ = nullptr) : head (head_) {}
 
-	bool empty (void) const { return head != nullptr; }
+	bool empty (void) const { return head == nullptr; }
 	T & front (void) {
 		ASSERT_SAFE (!empty ());
 		return *static_cast<T *> (head);
@@ -223,31 +238,41 @@ public:
 		head = &e;
 	}
 
-	class iterator : public std::iterator<std::forward_iterator_tag, T> {
+	/* iterator/const_iterator
+	 */
+	template <typename Type, typename Elem>
+	class iterator_base : public std::iterator<std::forward_iterator_tag, Type> {
 	private:
-		Element * current;
+		Elem * current;
 
 	public:
 		// default construction is equivalent to a end ptr.
-		explicit iterator (Element * p = nullptr) : current (p) {}
-		bool operator==(iterator other) { return current == other.current; }
-		bool operator!=(iterator other) { return current != other.current; }
-		iterator & operator++(void) {
+		explicit iterator_base (Elem * p = nullptr) : current (p) {}
+		bool operator==(iterator_base other) { return current == other.current; }
+		bool operator!=(iterator_base other) { return current != other.current; }
+		iterator_base & operator++(void) {
 			current = current->next;
 			return *this;
 		}
-		iterator operator++(int) {
+		iterator_base operator++(int) {
 			auto cpy = *this;
 			++*this;
 			return cpy;
 		}
-		T & operator*(void) { return *static_cast<T *> (current); }
-		T * operator->(void) { return static_cast<T *> (current); }
+		Type & operator*(void) { return *static_cast<Type *> (current); }
+		Type * operator->(void) { return static_cast<Type *> (current); }
 	};
+	using iterator = iterator_base<T, Element>;
+	using const_iterator = iterator_base<const T, const Element>;
 
 	iterator begin (void) { return iterator (head); }
 	iterator end (void) { return iterator (); }
+	const_iterator begin (void) const { return const_iterator (head); }
+	const_iterator end (void) const { return const_iterator (); }
 
+	/* Atomic single linked list, supporting only push and take_all.
+	 * Is impervious to ABA problem as there is no pop ().
+	 */
 	class Atomic {
 	private:
 		std::atomic<Element *> head{nullptr};
