@@ -3,19 +3,27 @@ std::thread::hardware_concurrency ()
 Allocator:
 - sizeclasses
 	- better sizeclass sizes ?
+
 - reduce superpage header
+	- head -> use index
 	- better pack page block headers for cache locality (struct of arrays ?)
+
 - virtual mapping overhaul:
 	- class that implements setup/map/destroy/cleanup
 	- eager (current) version, setup/cleanup=null, map/destroy=mmap/munmap
 	- lazy version, setup/cleanup=mmap/munmap gas, map=null, destroy=discard ?
-- atomic get_containing_block ?
+	- beware of Bootstrap::Allocator
+
+- atomic get_containing_block
+	- relaxed ?
+
 - optimize deallocation (Blk)
-- refined SPB ownership:
+
+- refined SPB management:
 	- active list in || with ownership list
 	- central heap list ? (cache, orphaned blocks, ...)
-- alloc parts:
-	- useless... remove and just let the bootstrap allocator
+	- active_spb by page block size list in TLH ?
+
 - atomics:
 	- SPT improvements ?
 	- owner : release-acquire seems good

@@ -109,7 +109,6 @@ namespace VMem {
 	constexpr size_t SuperpageSize = 1 << SuperpageShift;
 	constexpr size_t SuperpagePageNB = 1 << (SuperpageShift - PageShift);
 	// Some checks
-	static_assert (sizeof (void *) == 8, "64 bit arch required");
 	static_assert (SuperpageSize > PageSize, "SuperpageSize <= PageSize");
 	inline void runtime_asserts (void) { ASSERT_STD (sysconf (_SC_PAGESIZE) == PageSize); }
 }

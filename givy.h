@@ -13,7 +13,7 @@ namespace Givy {
 
 			/* Determining program break, placing Givy after (+ some pages in the middle) */
 			return {Ptr (sbrk (0)) + 1000 * VMem::PageSize, // start
-			        10 * VMem::SuperpageSize,               // space_by_node
+			        100 * VMem::SuperpageSize,               // space_by_node
 			        4,                                      // nb_node
 			        0};                                     // local node
 		}

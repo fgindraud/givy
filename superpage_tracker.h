@@ -49,10 +49,7 @@ namespace Allocator {
 		 */
 		size_t acquire (size_t superpage_nb);
 		void release (size_t superpage_num, size_t superpage_nb);
-		void trim (size_t superpage_num, size_t superpage_nb) {
-			ASSERT_SAFE (superpage_nb > 1);
-			release (superpage_num + 1, superpage_nb - 1);
-		}
+		void trim (size_t superpage_num, size_t superpage_nb);
 
 		/* Get superpage block start
 		 */
@@ -86,27 +83,39 @@ namespace Allocator {
 			size_t superpage_num (void) const { return array_idx * BitArray::Bits + bit_idx; }
 
 			// Movement in the table
-			void next_array_cell_first_bit (void) {
-				array_idx++;
-				bit_idx = 0;
+			Index next (void) const {
+				if (bit_idx == BitArray::Bits - 1)
+					return Index (array_idx + 1, 0);
+				else
+					return Index (array_idx, bit_idx + 1);
 			}
-			void prev_array_cell_last_bit (void) {
+			Index next_array_cell_first_bit (void) const { return Index (array_idx + 1, 0); }
+			Index prev_array_cell_last_bit (void) const {
 				ASSERT_SAFE (array_idx > 0);
-				array_idx--;
-				bit_idx = BitArray::Bits - 1;
+				return Index (array_idx - 1, BitArray::Bits - 1);
 			}
 
 			bool operator<(const Index & rhs) const {
 				return std::tie (array_idx, bit_idx) < std::tie (rhs.array_idx, rhs.bit_idx);
 			}
+			bool operator<=(const Index & rhs) const {
+				return std::tie (array_idx, bit_idx) <= std::tie (rhs.array_idx, rhs.bit_idx);
+			}
 		};
 
 		// Bit manipulation helpers
+
+		// Raw manipulators (clear exactly what is requested)
 		bool set_mapping_bits (Index loc_start, IntType expected_start, Index loc_end,
 		                       IntType expected_end);
+		void clear_mapping_bits (Index loc_start, Index loc_end);
 		void set_sequence_bits (Index loc_start, Index loc_end);
+		void clear_sequence_bits (Index loc_start, Index loc_end);
+
+		// Advanced manipulators (manage the bit pattern)
 		bool set_bits (Index loc_start, IntType expected_start, Index loc_end, IntType expected_end);
 		void clear_bits (Index loc_start, Index loc_end);
+		void trim_bits (Index loc_start, Index loc_end);
 	};
 
 	template <typename Alloc>
@@ -136,7 +145,7 @@ namespace Allocator {
 
 			if (c == BitArray::ones ()) {
 				// Completely full cell, skip
-				search_at.next_array_cell_first_bit ();
+				search_at = search_at.next_array_cell_first_bit ();
 				continue;
 			}
 
@@ -203,7 +212,7 @@ namespace Allocator {
 			}
 
 			// Not found, go to next cell
-			search_at.next_array_cell_first_bit ();
+			search_at = search_at.next_array_cell_first_bit ();
 		}
 		ASSERT_STD_FAIL ("SuperpageTracker: OOM");
 		return 0;
@@ -220,11 +229,23 @@ namespace Allocator {
 	}
 
 	template <typename Alloc>
+	void SuperpageTracker<Alloc>::trim (size_t superpage_num, size_t superpage_nb) {
+		/* Just clear the bits in the two tables.
+		 */
+		ASSERT_SAFE (superpage_nb > 1);
+		auto loc_start = Index (superpage_num);
+		auto loc_end = Index (superpage_num + superpage_nb);
+		ASSERT_SAFE (loc_end.array_idx < table_size);
+		trim_bits (loc_start, loc_end);
+	}
+
+	template <typename Alloc>
 	size_t SuperpageTracker<Alloc>::get_block_start_num (size_t superpage_num) const {
 		/* Find the first 0 in the sequence_table, looking backward from the starting position.
 		 * Note that it won't check if the superpages are in the mapped table.
 		 */
 		auto loc = Index (superpage_num);
+		// TODO Assert if superpage is mapped ?
 		ASSERT_SAFE (loc.array_idx < table_size);
 		while (true) {
 			IntType c = sequence_table[loc.array_idx].load (std::memory_order_seq_cst);
@@ -233,13 +254,14 @@ namespace Allocator {
 			if (prev_zero != BitArray::Bits)
 				return Index (loc.array_idx, prev_zero).superpage_num ();
 			// Continue search in previous word
-			loc.prev_array_cell_last_bit ();
+			loc = loc.prev_array_cell_last_bit ();
 		}
 	}
 
 	template <typename Alloc>
 	bool SuperpageTracker<Alloc>::set_mapping_bits (Index loc_start, IntType expected_start,
 	                                                Index loc_end, IntType expected_end) {
+		ASSERT_SAFE (loc_start < loc_end);
 		if (loc_start.array_idx == loc_end.array_idx) {
 			// One cell span
 			return mapping_table[loc_start.array_idx].compare_exchange_strong (
@@ -280,17 +302,39 @@ namespace Allocator {
 	}
 
 	template <typename Alloc>
+	void SuperpageTracker<Alloc>::clear_mapping_bits (Index loc_start, Index loc_end) {
+		ASSERT_SAFE (loc_start < loc_end);
+		if (loc_start.array_idx == loc_end.array_idx) {
+			// One cell span
+			IntType bits = BitArray::window_bound (loc_start.bit_idx, loc_end.bit_idx);
+			mapping_table[loc_start.array_idx].fetch_and (~bits, std::memory_order_seq_cst);
+		} else {
+			// Multiple cells span
+			IntType first_cell_bits = BitArray::window_bound (loc_start.bit_idx, BitArray::Bits);
+			IntType last_cell_bits = BitArray::window_bound (0, loc_end.bit_idx);
+
+			mapping_table[loc_start.array_idx].fetch_and (~first_cell_bits, std::memory_order_seq_cst);
+			for (size_t i = loc_start.array_idx + 1; i < loc_end.array_idx; i++)
+				mapping_table[i].store (BitArray::zeros (), std::memory_order_seq_cst);
+			if (last_cell_bits != BitArray::zeros ())
+				mapping_table[loc_end.array_idx].fetch_and (~last_cell_bits, std::memory_order_seq_cst);
+		}
+	}
+
+	template <typename Alloc>
 	void SuperpageTracker<Alloc>::set_sequence_bits (Index loc_start, Index loc_end) {
 		// No need to compare_exchange ; we are supposed to own the sequence bits as we reserved the
 		// area through mapping bits
+		ASSERT_SAFE (loc_start <= loc_end);
 		if (loc_start.array_idx == loc_end.array_idx) {
 			// One cell span
-			IntType bits = BitArray::window_bound (loc_start.bit_idx + 1, loc_end.bit_idx);
-			if (bits != BitArray::zeros ())
+			if (loc_start.bit_idx < loc_end.bit_idx) {
+				IntType bits = BitArray::window_bound (loc_start.bit_idx, loc_end.bit_idx);
 				sequence_table[loc_start.array_idx].fetch_or (bits, std::memory_order_seq_cst);
+			}
 		} else {
 			// Multiple cell span
-			IntType first_cell_bits = BitArray::window_bound (loc_start.bit_idx + 1, BitArray::Bits);
+			IntType first_cell_bits = BitArray::window_bound (loc_start.bit_idx, BitArray::Bits);
 			IntType last_cell_bits = BitArray::window_bound (0, loc_end.bit_idx);
 
 			sequence_table[loc_start.array_idx].fetch_or (first_cell_bits, std::memory_order_seq_cst);
@@ -302,33 +346,14 @@ namespace Allocator {
 	}
 
 	template <typename Alloc>
-	bool SuperpageTracker<Alloc>::set_bits (Index loc_start, IntType expected_start, Index loc_end,
-	                                        IntType expected_end) {
-		if (set_mapping_bits (loc_start, expected_start, loc_end, expected_end)) {
-			// Mapping bits are always set first
-			set_sequence_bits (loc_start, loc_end);
-			return true;
-		} else {
-			return false;
-		}
-	}
-
-	template <typename Alloc>
-	void SuperpageTracker<Alloc>::clear_bits (Index loc_start, Index loc_end) {
-		/* Clears bits to release a superpage sequence.
-		 * sequence_table is cleared first, then mapping_table.
-		 *
-		 * The mapping pattern is used to clear both mapping/sequence bits because sequence bits
-		 * are a subset of mapping bits:
-		 * mapping:  111..11
-		 * sequence: 011..11
-		 */
+	void SuperpageTracker<Alloc>::clear_sequence_bits (Index loc_start, Index loc_end) {
+		ASSERT_SAFE (loc_start <= loc_end);
 		if (loc_start.array_idx == loc_end.array_idx) {
 			// One cell span
-			IntType bits = BitArray::window_bound (loc_start.bit_idx, loc_end.bit_idx);
-			if (loc_end.bit_idx - loc_start.bit_idx > 1)
+			if (loc_start.bit_idx < loc_end.bit_idx) {
+				IntType bits = BitArray::window_bound (loc_start.bit_idx, loc_end.bit_idx);
 				sequence_table[loc_start.array_idx].fetch_and (~bits, std::memory_order_seq_cst);
-			mapping_table[loc_start.array_idx].fetch_and (~bits, std::memory_order_seq_cst);
+			}
 		} else {
 			// Multiple cells span
 			IntType first_cell_bits = BitArray::window_bound (loc_start.bit_idx, BitArray::Bits);
@@ -339,13 +364,41 @@ namespace Allocator {
 				sequence_table[i].store (BitArray::zeros (), std::memory_order_seq_cst);
 			if (last_cell_bits != BitArray::zeros ())
 				sequence_table[loc_end.array_idx].fetch_and (~last_cell_bits, std::memory_order_seq_cst);
+	}
+	}
 
-			mapping_table[loc_start.array_idx].fetch_and (~first_cell_bits, std::memory_order_seq_cst);
-			for (size_t i = loc_start.array_idx + 1; i < loc_end.array_idx; i++)
-				mapping_table[i].store (BitArray::zeros (), std::memory_order_seq_cst);
-			if (last_cell_bits != BitArray::zeros ())
-				mapping_table[loc_end.array_idx].fetch_and (~last_cell_bits, std::memory_order_seq_cst);
+	template <typename Alloc>
+	bool SuperpageTracker<Alloc>::set_bits (Index loc_start, IntType expected_start, Index loc_end,
+	                                        IntType expected_end) {
+		/* Sets bits to release a superpage sequence.
+		 * mapping_table is set first, then sequence_table if we were successful.
+		 * set_sequence_bits lets the first bit as 0 to mark the start of sequence.
+		 */
+		if (set_mapping_bits (loc_start, expected_start, loc_end, expected_end)) {
+			set_sequence_bits (loc_start.next (), loc_end);
+			return true;
+		} else {
+			return false;
 		}
+	}
+
+	template <typename Alloc>
+	void SuperpageTracker<Alloc>::clear_bits (Index loc_start, Index loc_end) {
+		/* Clears bits to release a superpage sequence.
+		 * sequence_table is cleared first, then mapping_table.
+		 * we do not clear the start_of_sequence 0 bit (useless).
+		 */
+		clear_sequence_bits (loc_start.next (), loc_end);
+		clear_mapping_bits (loc_start, loc_end);
+	}
+	
+	template <typename Alloc>
+	void SuperpageTracker<Alloc>::trim_bits (Index loc_start, Index loc_end) {
+		/* Clears bits to trim a superpage sequence to 1 superpage.
+		 * sequence_table is cleared first, then mapping_table.
+		 */
+		clear_sequence_bits (loc_start.next (), loc_end);
+		clear_mapping_bits (loc_start.next (), loc_end);
 	}
 
 #ifdef ASSERT_SAFE_ENABLED
