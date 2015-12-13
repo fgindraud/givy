@@ -224,7 +224,6 @@ namespace Allocator {
 		 *
 		 * ThreadLocalHeap lists:
 		 * - SPB owned by a ThreadLocalHeap are always in the owned_superpage_blocks list
-		 * TODO orphaned, optimization for full/not_full SPB
 		 */
 	private:
 		/* Superpage block header.
@@ -235,10 +234,9 @@ namespace Allocator {
 		 * superpage are part of the huge alloc.
 		 */
 		std::atomic<ThreadLocalHeap *> owner;
-
 		size_t superpage_nb;
-		size_t huge_alloc_pb_index;
 
+		size_t huge_alloc_pb_index;
 		PageBlockUnusedList unused;
 		PageBlockHeader pbh_table[VMem::SuperpagePageNB];
 
@@ -277,12 +275,9 @@ namespace Allocator {
 		bool all_page_blocks_unused (void) const;
 
 		/* Owner */
-		ThreadLocalHeap * get_owner (void) const { return owner; }
-		void disown (void) { owner = nullptr; }
-		bool adopt (ThreadLocalHeap * adopter) {
-			ThreadLocalHeap * expected = nullptr;
-			return owner.compare_exchange_strong (expected, adopter);
-		}
+		ThreadLocalHeap * get_owner (void) const;
+		void disown (void);
+		bool adopt (ThreadLocalHeap * adopter);
 
 	private:
 		/* Page block header formatting */
@@ -312,8 +307,6 @@ namespace Allocator {
 	struct MainHeap {
 		/* Central heap class.
 		 * Mainly hosts the superpage_tracker, and is responsible for SPB creation and destruction.
-		 *
-		 * TODO own orphan SPB with locked acccess ?
 		 */
 		using BootstrapAllocator = Parts::BackwardBumpPointer;
 
@@ -367,6 +360,8 @@ namespace Allocator {
 		~ThreadLocalHeap ();
 
 		/* Allocation interface.
+		 *
+		 * deallocate supports pointers inside the allocation.
 		 */
 		Block allocate (size_t size, size_t align);
 		void deallocate (Ptr ptr);
@@ -536,6 +531,8 @@ namespace Allocator {
 		return from_pointer_in_first_superpage (Ptr (&pbh));
 	}
 
+	/* Huge Alloc */
+
 	bool SuperpageBlock::in_huge_alloc (Ptr p) const {
 		ASSERT_SAFE (ptr () <= p);
 		ASSERT_SAFE (p < ptr () + superpage_nb * VMem::SuperpageSize);
@@ -559,6 +556,8 @@ namespace Allocator {
 		// Trim
 		superpage_nb = 1;
 	}
+
+	/* Page block */
 
 	PageBlockHeader * SuperpageBlock::allocate_page_block (size_t page_nb, MemoryType type) {
 		ASSERT_SAFE (page_nb > 0);
@@ -624,6 +623,22 @@ namespace Allocator {
 		// Test if unused quicklist contains every page
 		return unused.size () == AvailablePages;
 	}
+
+	/* Ownership */
+
+	ThreadLocalHeap * SuperpageBlock::get_owner (void) const {
+		return owner.load (std::memory_order_acquire);
+	}
+
+	void SuperpageBlock::disown (void) { owner.store (nullptr, std::memory_order_release); }
+
+	bool SuperpageBlock::adopt (ThreadLocalHeap * adopter) {
+		ThreadLocalHeap * expected = nullptr;
+		return owner.compare_exchange_strong (expected, adopter, std::memory_order_acq_rel,
+		                                      std::memory_order_relaxed);
+	}
+
+	/* Private */
 
 	void SuperpageBlock::format_pbh (PageBlockHeader * from, PageBlockHeader * to, MemoryType type) {
 		size_t s = to - from;
@@ -723,10 +738,12 @@ namespace Allocator {
 	ThreadLocalHeap::~ThreadLocalHeap () {
 		DEBUG_TEXT ("[%p]~ThreadLocalHeap()\n", this);
 
-		// Disown pages
-		// TODO put in list ?
-		for (auto & spb : owned_superpage_blocks)
+		// Disown pages to let them be picked up by another ThreadLocalHeap
+		while (!owned_superpage_blocks.empty ()) {
+			auto & spb = owned_superpage_blocks.front ();
+			owned_superpage_blocks.pop_front ();
 			spb.disown ();
+		}
 	}
 
 	Block ThreadLocalHeap::allocate (size_t size, size_t align) {
@@ -770,7 +787,8 @@ namespace Allocator {
 		 * thread remote deallocation case.
 		 */
 		if (owner == nullptr && spb.adopt (this)) {
-			// TODO add to TLH list ?
+			owned_superpage_blocks.push_back (spb);
+			owner = this;
 		}
 
 		if (owner == this) {
@@ -780,12 +798,14 @@ namespace Allocator {
 			// Node local Remote Thread deallocation
 
 			/* Push the block on the remote TLH freelist
-			 * The block is guaranteed to fit at least a UnusedBlock freelist link.
 			 * Also store the spb reference to avoid accessing the superpage_tracker again.
 			 *
-			 * FIXME may fail if ptr is not at the start of allocation
+			 * All allocations have alignement and size at least those of UnusedBlock.
+			 * So all allocations boundaries are on a "grid" made of UnusedBlock.
+			 * ptr.align (sizeof (UnusedBlock)) will ensure that the temporary UnusedBlock is not crossing
+			 * any Block boundary, so constructing one is ok.
 			 */
-			UnusedBlock * blk = new (ptr) UnusedBlock (spb);
+			UnusedBlock * blk = new (ptr.align (sizeof (UnusedBlock))) UnusedBlock (spb);
 			owner->remote_freed_blocks.push_front (*blk);
 		}
 	}

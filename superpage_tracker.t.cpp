@@ -3,7 +3,6 @@
 #include <thread>
 #include <atomic>
 
-#include "alloc_parts.h"
 #include "superpage_tracker.h"
 
 using namespace Givy;
