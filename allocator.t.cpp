@@ -10,6 +10,7 @@ void show (const char * title) {
 }
 
 int main (void) {
+	Givy::Allocator::SizeClass::print ();
 	auto p1 = G::allocate (0xF356, 1);
 	auto p2 = G::allocate (53, 1);
 	show ("A[12]");

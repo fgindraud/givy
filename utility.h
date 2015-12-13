@@ -4,6 +4,7 @@
 #include <cerrno>
 #include <memory>
 #include <cstdint>
+#include <type_traits>
 
 // system specific
 #include <sys/mman.h>
@@ -217,6 +218,13 @@ namespace BoundIntDetail {
 */
 template <size_t MaxValue>
 using BoundUint = typename BoundIntDetail::UintSelector<Math::representation_bits (MaxValue)>::Type;
+
+/* ------------------------------ Member access methods ---------------------------- */
+
+template<typename Class, typename MemberType, MemberType std::decay_t<Class>::* Ptr>
+constexpr MemberType get_member (Class cls) {
+	return cls.*Ptr;
+}
 
 /* ------------------------------ Low level memory management ---------------------- */
 

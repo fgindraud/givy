@@ -237,6 +237,7 @@ public:
 		e.next = head;
 		head = &e;
 	}
+	void clear (void) { head = nullptr; }
 
 	/* iterator/const_iterator
 	 */

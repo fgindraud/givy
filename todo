@@ -3,10 +3,8 @@ std::thread::hardware_concurrency ()
 Allocator:
 - TLH destruction and orphan SPB << 2
 - sizeclasses
-	- better sizeclass structures (less metadata) << 1
 	- better sizeclass sizes ?
 - reduce superpage header
-	- size : reduce size_t usage when possible
 	- better pack page block headers for cache locality (struct of arrays ?)
 - optimize deallocation (local) << 3
 - virtual mapping overhaul:
