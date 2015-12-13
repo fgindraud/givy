@@ -1,3 +1,5 @@
+#define ASSERT_LEVEL_OPT
+
 #include "givy.h"
 
 using namespace Givy::GlobalInstance;

@@ -61,9 +61,9 @@ public:
 	FixedArray (size_t size_, Alloc & allocator_, Args &&... args)
 	    : allocator (allocator_), length (size_) {
 		// Allocate
-		ASSERT_STD (size_ > 0);
+		ASSERT_SAFE (size_ > 0);
 		memory = allocator.allocate (length * sizeof (T), alignof (T));
-		ASSERT_STD (memory.ptr != nullptr);
+		ASSERT_SAFE (memory.ptr != nullptr);
 
 		// Construct
 		for (size_t i = 0; i < size (); ++i)

@@ -14,7 +14,7 @@
  * ASSERT_STD (): standard level of assert (small cost)
  * ASSERT_SAFE (): only present in debug mode (high cost)
  *
- * Additionally, ASSERT_FAIL(text) can be used to fail unconditionally.
+ * Similarly, ASSERT_*_FAIL(text) can be used to fail unconditionally.
  *
  * Every one of these macro is not guaranteed to be run ; the condition should not have any side
  * effect. They are only here to detect *some* cases of undefined behavior.
@@ -79,14 +79,18 @@
 
 #ifdef ASSERT_STD_ENABLED
 #define ASSERT_STD(cond) ASSERT_INTERNAL (cond)
+#define ASSERT_STD_FAIL(text) ASSERT_FAIL (text)
 #else
 #define ASSERT_STD(cond)
+#define ASSERT_STD_FAIL(text)
 #endif
 
 #ifdef ASSERT_OPT_ENABLED
 #define ASSERT_OPT(cond) ASSERT_INTERNAL (cond)
+#define ASSERT_OPT_FAIL(text) ASSERT_FAIL (text)
 #else
 #define ASSERT_OPT(cond)
+#define ASSERT_OPT_FAIL(text)
 #endif
 
 /* ------------------------ Debug messages ----------------------------
@@ -100,4 +104,3 @@
 #endif
 
 #endif
-

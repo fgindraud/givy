@@ -50,7 +50,7 @@ namespace Allocator {
 		size_t acquire (size_t superpage_nb);
 		void release (size_t superpage_num, size_t superpage_nb);
 		void trim (size_t superpage_num, size_t superpage_nb) {
-			ASSERT_STD (superpage_nb > 1);
+			ASSERT_SAFE (superpage_nb > 1);
 			release (superpage_num + 1, superpage_nb - 1);
 		}
 
@@ -91,7 +91,7 @@ namespace Allocator {
 				bit_idx = 0;
 			}
 			void prev_array_cell_last_bit (void) {
-				ASSERT_STD (array_idx > 0);
+				ASSERT_SAFE (array_idx > 0);
 				array_idx--;
 				bit_idx = BitArray::Bits - 1;
 			}
@@ -125,7 +125,7 @@ namespace Allocator {
 		 * Search starts at the start of the node-local virtual addresses segment.
 		 * search_at.bit_idx is taken into account if search starts in the middle of a cell.
 		 */
-		ASSERT_STD (superpage_nb > 0);
+		ASSERT_SAFE (superpage_nb > 0);
 
 		auto search_at = Index (layout.local_area_start_superpage_num ());
 		auto search_end = Index (layout.local_area_end_superpage_num ());
@@ -205,7 +205,7 @@ namespace Allocator {
 			// Not found, go to next cell
 			search_at.next_array_cell_first_bit ();
 		}
-		ASSERT_FAIL ("SuperpageTracker: no superpage sequence found");
+		ASSERT_STD_FAIL ("SuperpageTracker: OOM");
 		return 0;
 	}
 
@@ -215,7 +215,7 @@ namespace Allocator {
 		 */
 		auto loc_start = Index (superpage_num);
 		auto loc_end = Index (superpage_num + superpage_nb);
-		ASSERT_STD (loc_end.array_idx < table_size);
+		ASSERT_SAFE (loc_end.array_idx < table_size);
 		clear_bits (loc_start, loc_end);
 	}
 
@@ -225,7 +225,7 @@ namespace Allocator {
 		 * Note that it won't check if the superpages are in the mapped table.
 		 */
 		auto loc = Index (superpage_num);
-		ASSERT_STD (loc.array_idx < table_size);
+		ASSERT_SAFE (loc.array_idx < table_size);
 		while (true) {
 			IntType c = sequence_table[loc.array_idx].load (std::memory_order_seq_cst);
 			// Try to find preceeding zero
@@ -352,7 +352,7 @@ namespace Allocator {
 	template <typename Alloc> void SuperpageTracker<Alloc>::print (int superpage_by_line) const {
 		const int indicator_interval = 10;
 		const int line_prefix_size = 10;
-		ASSERT_STD (superpage_by_line > 0);
+		ASSERT_SAFE (superpage_by_line > 0);
 
 		// Indicators
 		size_t nb_indicator = Math::divide_up (superpage_by_line, indicator_interval) + 1;

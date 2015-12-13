@@ -27,7 +27,7 @@ namespace Allocator {
 		public:
 			explicit BumpPointerBase (Ptr start)
 			    : left (start), left_mapped (start), right (start), right_mapped (start) {
-				ASSERT_STD (start.is_aligned (VMem::PageSize));
+				ASSERT_SAFE (start.is_aligned (VMem::PageSize));
 			}
 			~BumpPointerBase () {
 				if (left_mapped < right_mapped)

@@ -739,7 +739,7 @@ namespace Allocator {
 		 * requested alignement to answer the allocate request.
 		 */
 		ASSERT_STD (align <= VMem::PageSize);
-		ASSERT_SAFE (Math::is_power_of_2 (align));
+		ASSERT_STD (Math::is_power_of_2 (align));
 		size = std::max (size, align);
 
 		if (size < Thresholds::SmallMedium) {
@@ -815,7 +815,7 @@ namespace Allocator {
 		// If failed : Take from a new superpage
 		SuperpageBlock & spb = create_superpage_block ();
 		PageBlockHeader * pbh = spb.allocate_page_block (nb_page, type);
-		ASSERT_STD (pbh != nullptr);
+		ASSERT_SAFE (pbh != nullptr);
 		return *pbh;
 	}
 
@@ -880,7 +880,7 @@ namespace Allocator {
 				destroy_page_block (pbh, spb);
 			} else {
 				// Unreachable
-				ASSERT_SAFE_FAIL ("PageBlockHeader is neither Small nor Medium");
+				ASSERT_STD_FAIL ("PageBlockHeader is neither Small nor Medium");
 			}
 		}
 	}
