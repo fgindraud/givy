@@ -262,6 +262,7 @@ namespace Allocator {
 		Ptr page_block_ptr (const PageBlockHeader & pbh) const;
 		Block page_block_memory (const PageBlockHeader & pbh) const;
 
+		PageBlockHeader & page_block_header (size_t pb_index);
 		PageBlockHeader & page_block_header (Ptr p);
 		bool all_page_blocks_unused (void) const; // excluding Huge & Reserved
 		size_t available_pb_index (void) const;
@@ -439,20 +440,21 @@ namespace Allocator {
 
 #ifdef ASSERT_SAFE_ENABLED
 	void PageBlockHeader::print (void) const {
-		if (type == MemoryType::Small)
-			printf ("Small [S=%zu,sc=%zu,bs=%zu,cvd=%zu,un=%zu]\n", size (), size_t (sb_sizeclass),
-			        SizeClass::config[sb_sizeclass].block_size, size_t (sb_nb_carved),
-			        size_t (sb_nb_unused));
-		else if (type == MemoryType::Medium)
+		if (type == MemoryType::Small) {
+			auto & info = SizeClass::config[sb_sizeclass];
+			printf ("Small [S=%zu,sc=%zu,bs=%zu,cvd=%zu/%zu,un=%zu]\n", size (), size_t (sb_sizeclass),
+			        info.block_size, size_t (sb_nb_carved), info.nb_blocks, size_t (sb_nb_unused));
+		} else if (type == MemoryType::Medium) {
 			printf ("Medium [S=%zu]\n", size ());
-		else if (type == MemoryType::Huge)
+		} else if (type == MemoryType::Huge) {
 			printf ("Huge (start) [S=%zu]\n", size ());
-		else if (type == MemoryType::Unused)
+		} else if (type == MemoryType::Unused) {
 			printf ("Unused [S=%zu]\n", size ());
-		else if (type == MemoryType::Reserved)
+		} else if (type == MemoryType::Reserved) {
 			printf ("Reserved [S=%zu]\n", size ());
-		else
+		} else {
 			printf ("<error> [Type=%ld]\n", static_cast<long> (type));
+		}
 	}
 #endif
 
@@ -584,11 +586,15 @@ namespace Allocator {
 		return {page_block_ptr (pbh), pbh.size () * VMem::PageSize};
 	}
 
+	PageBlockHeader & SuperpageBlock::page_block_header (size_t pb_index) {
+		return pbh_table[pb_index];
+	}
+
 	PageBlockHeader & SuperpageBlock::page_block_header (Ptr p) {
 		ASSERT_SAFE (ptr () <= p);
 		ASSERT_SAFE (p < ptr () + VMem::SuperpageSize);
 		size_t pb_index = (p - ptr ()) / VMem::PageSize;
-		return *pbh_table[pb_index].head;
+		return *page_block_header (pb_index).head;
 	}
 
 	bool SuperpageBlock::all_page_blocks_unused (void) const {
@@ -597,7 +603,8 @@ namespace Allocator {
 	}
 
 	size_t SuperpageBlock::available_pb_index (void) const {
-		/* huge_alloc_pb_index can be above SuperpagePageNB, if a huge alloc is smaller than a superpage.
+		/* huge_alloc_pb_index can be above SuperpagePageNB, if a huge alloc is smaller than a
+		 * superpage.
 		 * available_pb_index () gives the max pb_index that can be used.
 		 */
 		return std::min (huge_alloc_pb_index, VMem::SuperpagePageNB);
@@ -724,6 +731,13 @@ namespace Allocator {
 		while (!owned_superpage_blocks.empty ()) {
 			auto & spb = owned_superpage_blocks.front ();
 			owned_superpage_blocks.pop_front ();
+
+			// remove page blocks from active sizeclass list
+			for (size_t i = 0; i < VMem::SuperpagePageNB; i += spb.page_block_header (i).size ())
+				if (spb.page_block_header (i).type == MemoryType::Small)
+					/* TODO remove if it was in list... need an "active" method on PB */;
+			// TODO reinsert on adoption
+
 			spb.disown ();
 		}
 	}

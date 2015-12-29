@@ -3,6 +3,7 @@
 
 #include <iterator>
 #include <atomic>
+#include <tuple>
 
 #include "reporting.h"
 
@@ -24,7 +25,8 @@ public:
 		~Element () {
 			/* FIXME
 			 * This assert requires that lists be empty at destruction.
-			 * In particular, in the allocator, it requires that everything is deallocated before allocator destruction.
+			 * In particular, in the allocator, it requires that everything is deallocated before
+			 * allocator destruction.
 			 * This is very constraining, but useful for testing to detect metadata failures.
 			 * It should be removed for working build.
 			 */
@@ -37,6 +39,11 @@ public:
 		Element & operator=(Element &&) = delete;
 	};
 
+private:
+	/* Element structs forms a double linked circular chain. */
+	Element root;
+
+public:
 	// Default ctor ok ; others are deleted due to Element
 
 	// Headless insert/remove
@@ -73,8 +80,11 @@ public:
 	private:
 		Elem * current;
 
+		iterator_base (Elem * p) : current (p) {}
+		friend class Chain;
+
 	public:
-		iterator_base (Elem * p = nullptr) : current (p) {}
+		iterator_base () : Elem (nullptr) {}
 		bool operator==(iterator_base other) const { return current == other.current; }
 		bool operator!=(iterator_base other) const { return current != other.current; }
 		iterator_base & operator++(void) {
@@ -107,9 +117,6 @@ public:
 	const_iterator end (void) const { return {&root}; }
 
 private:
-	/* Element structs forms a double linked circular chain. */
-	Element root;
-
 	/* Cross :
 	 *  _left_a_     _b_right_      _left_right_
 	 * /        \ + /         \ => /            \
@@ -152,6 +159,12 @@ public:
 	using ListType = Chain<T, Tag>;
 	using Element = typename ListType::Element;
 
+private:
+	ListType exact_size_slots[exact_size_slot_nb];
+	ListType bigger_sizes;
+	size_t stored_size{0};
+
+public:
 	// Default ctor ok ; others deleted due to Chain
 
 	void insert (T & element) {
@@ -199,11 +212,6 @@ public:
 
 	// Cumulated size stored in the quicklist
 	size_t size (void) const { return stored_size; }
-
-private:
-	ListType exact_size_slots[exact_size_slot_nb];
-	ListType bigger_sizes;
-	size_t stored_size{0};
 };
 
 template <typename T, typename Tag = void> class ForwardChain {
@@ -246,9 +254,11 @@ public:
 	private:
 		Elem * current;
 
+		iterator_base (Elem * p) : current (p) {}
+		friend class ForwardChain;
+
 	public:
-		// default construction is equivalent to a end ptr.
-		explicit iterator_base (Elem * p = nullptr) : current (p) {}
+		iterator_base () : iterator_base (nullptr) {}
 		bool operator==(iterator_base other) { return current == other.current; }
 		bool operator!=(iterator_base other) { return current != other.current; }
 		iterator_base & operator++(void) {
@@ -266,10 +276,10 @@ public:
 	using iterator = iterator_base<T, Element>;
 	using const_iterator = iterator_base<const T, const Element>;
 
-	iterator begin (void) { return iterator (head); }
-	iterator end (void) { return iterator (); }
-	const_iterator begin (void) const { return const_iterator (head); }
-	const_iterator end (void) const { return const_iterator (); }
+	iterator begin (void) { return {head}; }
+	iterator end (void) { return {nullptr}; }
+	const_iterator begin (void) const { return {head}; }
+	const_iterator end (void) const { return {nullptr}; }
 
 	/* Atomic single linked list, supporting only push and take_all.
 	 * Is impervious to ABA problem as there is no pop ().

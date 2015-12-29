@@ -1,14 +1,19 @@
 std::thread::hardware_concurrency ()
 
+Linkage / structure:
+- never use multiple
+
 Allocator:
 - sizeclasses
 	- better sizeclass sizes ?
 
-- reduce superpage header
+- superpage header
 	- head -> use index
 	- better pack page block headers for cache locality (struct of arrays ?)
+	- separate in spb_h and spb types
+	- page block interval structure
 
-- virtual mapping overhaul:
+- virtual mapping overhaul (low priority)
 	- class that implements setup/map/destroy/cleanup
 	- eager (current) version, setup/cleanup=null, map/destroy=mmap/munmap
 	- lazy version, setup/cleanup=mmap/munmap gas, map=null, destroy=discard ?
@@ -20,10 +25,10 @@ Allocator:
 - optimize deallocation (Blk)
 
 - refined SPB management:
-	- active list in || with ownership list
 	- central heap list ? (cache, orphaned blocks, ...)
-	- active_spb by page block size list in TLH ?
+	- active_spb by page block size list in TLH ? or global unused page block list ?
 
 - atomics:
 	- SPT improvements ?
 	- owner : release-acquire seems good
+

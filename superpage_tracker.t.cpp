@@ -1,31 +1,16 @@
 #define ASSERT_LEVEL_SAFE
 
-#include <thread>
-#include <atomic>
-
 #include "superpage_tracker.h"
+#include "tests.h"
+
+#include <thread>
+#include <array>
 
 using namespace Givy;
 
 void sep (void) {
 	printf ("\n---------------------------------------------------------\n");
 }
-
-struct one_shot_barrier {
-	std::atomic<bool> start_flag;
-	std::atomic<int> wait_count;
-	one_shot_barrier (int n) : start_flag (false), wait_count (n) {}
-	void wait (void) {
-		wait_count--;
-		while (!start_flag)
-			;
-	}
-	void wait_master (void) {
-		while (wait_count > 0)
-			;
-		start_flag = true;
-	}
-};
 
 struct SystemAlloc {
 	// For testing only...
@@ -84,28 +69,35 @@ int main (void) {
 	sep ();
 	{
 		// Test parallel modifications (may fail spuriously if too much contention)
-		int nb_th = 4;
-		int nb_alloc = 10;
-		size_t allocs[nb_th * nb_alloc];
+		constexpr int nb_th = 4;
+		constexpr int nb_alloc = 10;
+		std::array<std::array<size_t, nb_alloc>, nb_th> allocs;
 
-		std::thread threads[nb_th];
-		one_shot_barrier b (nb_th);
+		std::array<std::thread, nb_th> threads;
+		barrier<nb_th + 1> wait;
 
 		for (int i = 0; i < nb_th; ++i)
-			threads[i] = std::thread ([&](size_t * r) {
-				b.wait ();
+			threads[i] = std::thread ([&](int thid) {
+				wait ();
 				for (int j = 0; j < nb_alloc; ++j)
-					r[j] = tracker.acquire (10);
-			}, &allocs[i * nb_alloc]);
+					allocs[thid][j] = tracker.acquire (10);
+				wait ();
+				wait ();
+				for (int j = 0; j < nb_alloc; ++j)
+					tracker.release (allocs[thid][j], 10);
+			}, i);
 
-		b.wait_master ();
-		for (int i = 0; i < nb_th; ++i)
-			threads[i].join ();
-		for (int j = 0; j < nb_th; ++j) {
-			for (int i = 0; i < nb_alloc; ++i)
-				printf ("%zu ", allocs[j * nb_alloc + i]);
+		wait ();
+		wait ();
+		tracker.print ();
+		for (auto & ath : allocs) {
+			for (auto s : ath)
+				printf ("%zu ", s);
 			printf ("\n");
 		}
+		wait ();
+		for (auto & th : threads)
+			th.join ();
 		tracker.print ();
 	}
 	sep ();

@@ -15,7 +15,60 @@
 
 namespace Givy {
 
-/* ------------------------ BitMask management -------------------- */
+/* ------------------------------ Range ------------------------------------ */
+
+template <typename T> class Range {
+private:
+	const T start_;
+	const T end_;
+
+public:
+	constexpr Range (T start, T end) : start_ (start), end_ (end) {}
+	constexpr Range (T n) : Range (0, n) {}
+
+	struct const_iterator : public std::iterator<std::bidirectional_iterator_tag, T> {
+	private:
+		T i_;
+		constexpr const_iterator (T i) : i_ (i) {}
+		friend class Range;
+
+	public:
+		constexpr const_iterator () : const_iterator (0) {}
+		constexpr bool operator==(const_iterator other) const { return i_ == other.i_; }
+		constexpr bool operator!=(const_iterator other) const { return i_ != other.i_; }
+		constexpr const_iterator & operator++(void) {
+			++i_;
+			return *this;
+		}
+		constexpr const_iterator & operator--(void) {
+			--i_;
+			return *this;
+		}
+		constexpr const_iterator operator++(int) {
+			auto cpy = *this;
+			++*this;
+			return cpy;
+		}
+		constexpr const_iterator operator--(int) {
+			auto cpy = *this;
+			--*this;
+			return cpy;
+		}
+		constexpr const T & operator*(void) const { return i_; }
+		constexpr const T * operator->(void) const { return &i_; }
+	};
+
+	constexpr const_iterator begin (void) const { return {start_}; }
+	constexpr const_iterator end (void) const { return {end_}; }
+};
+template <typename T> static constexpr Range<T> range (T start, T end) {
+	return {start, end};
+}
+template <typename T> static constexpr Range<T> range (T n) {
+	return {n};
+}
+
+/* ------------------------ BitMask management ----------------------------- */
 
 template <typename IntType> struct BitMask {
 	/* Bitmask manipulation functions, parametrized by the integer type used.
@@ -116,7 +169,7 @@ template <typename IntType> struct BitMask {
 	static const char * str (IntType c) {
 		// return : static buffer to string representing c (bits)
 		static char buffer[Bits + 1] = {'\0'};
-		for (size_t i = 0; i < Bits; ++i) {
+		for (auto i : range (Bits)) {
 			buffer[i] = (one () & c) ? '1' : '0';
 			c >>= 1;
 		}
@@ -158,9 +211,9 @@ template <> constexpr size_t BitMask<unsigned long long>::count_zeros (unsigned 
 /* ----------------------------- Additionnal math utils ---------------------------- */
 
 namespace Math {
-	
+
 	// Power of 2
-	
+
 	template <typename T> constexpr bool is_power_of_2 (T x) {
 		static_assert (std::numeric_limits<T>::is_integer, "T must be an integer");
 		return x > 0 && (x & (x - 1)) == 0;
@@ -181,7 +234,7 @@ namespace Math {
 	}
 
 	constexpr size_t round_up_as_power_of_2 (size_t x) { return size_t (1) << log_2_sup (x); }
-	
+
 	// Binary representation
 
 	constexpr size_t representation_bits (size_t x) {
@@ -221,15 +274,15 @@ using BoundUint = typename BoundIntDetail::UintSelector<Math::representation_bit
 
 /* ------------------------------ Member access methods ---------------------------- */
 
-template<typename Class, typename MemberType, MemberType std::decay_t<Class>::* Ptr>
-constexpr MemberType get_member (Class cls) {
+template <typename Class, typename MemberType, MemberType std::decay_t<Class>::*Ptr>
+static constexpr MemberType get_member (Class cls) {
 	return cls.*Ptr;
 }
 
 /* ------------------------------ Low level memory management ---------------------- */
 
 namespace VMem {
-	inline int map (Ptr page_start, size_t size) {
+	static inline int map (Ptr page_start, size_t size) {
 		void * p = mmap (page_start, size, PROT_READ | PROT_WRITE | PROT_EXEC,
 		                 MAP_PRIVATE | MAP_ANONYMOUS | MAP_FIXED, -1, 0);
 		if (p == MAP_FAILED || p != page_start)
@@ -237,20 +290,20 @@ namespace VMem {
 		else
 			return 0;
 	}
-	inline int unmap (Ptr page_start, size_t size) { return munmap (page_start, size); }
-	inline int discard (Ptr page_start, size_t size) {
+	static inline int unmap (Ptr page_start, size_t size) { return munmap (page_start, size); }
+	static inline int discard (Ptr page_start, size_t size) {
 		return madvise (page_start, size, MADV_DONTNEED);
 	}
 
-	inline void map_checked (Ptr page_start, size_t size) {
+	static inline void map_checked (Ptr page_start, size_t size) {
 		int map_r = map (page_start, size);
 		ASSERT_OPT (map_r == 0);
 	}
-	inline void unmap_checked (Ptr page_start, size_t size) {
+	static inline void unmap_checked (Ptr page_start, size_t size) {
 		int unmap_r = unmap (page_start, size);
 		ASSERT_OPT (unmap_r == 0);
 	}
-	inline void discard_checked (Ptr page_start, size_t size) {
+	static inline void discard_checked (Ptr page_start, size_t size) {
 		int discard_r = discard (page_start, size);
 		ASSERT_OPT (discard_r == 0);
 	}
