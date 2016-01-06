@@ -1,16 +1,16 @@
 #ifndef ALLOCATOR_H
 #define ALLOCATOR_H
+// no inlined
 
 #include <atomic>
 #include <algorithm>
 
 #include "reporting.h"
-#include "bootstrap.h"
-#include "base_defs.h"
-#include "utility.h"
 #include "array.h"
+#include "types.h"
+#include "intrusive_list.h"
 #include "superpage_tracker.h"
-#include "chain.h"
+#include "allocator_bootstrap.h"
 
 namespace Givy {
 namespace Allocator {
@@ -18,7 +18,7 @@ namespace Allocator {
 	/* ---------------------------- Type declaration ------------------------------ */
 
 	/* Forward declaration of types.
-	 * This is used to feed the typedef for templatized data structures (lists from chain.h)
+	 * This is used to feed the typedef for templatized data structures (lists from intrusive-list.h)
 	 */
 	struct UnusedBlock;
 	struct PageBlockHeader;
@@ -28,10 +28,10 @@ namespace Allocator {
 
 	/* Lists types typedef
 	 */
-	using BlockFreeList = ForwardChain<UnusedBlock>;
+	using BlockFreeList = Intrusive::ForwardList<UnusedBlock>;
 	using ThreadRemoteFreeList = BlockFreeList::Atomic;
-	using PageBlockUnusedList = QuickList<PageBlockHeader, 10>;
-	using SuperpageBlockOwnedList = Chain<SuperpageBlock>;
+	using PageBlockUnusedList = Intrusive::QuickList<PageBlockHeader, 10>;
+	using SuperpageBlockOwnedList = Intrusive::List<SuperpageBlock>;
 
 	class UnusedBlock : public BlockFreeList::Element {
 		/* This type represents a block of memory that is unused by the user.
@@ -107,16 +107,17 @@ namespace Allocator {
 			return {bs, 1, VMem::PageSize / bs, Id (nth_sizeclass)};
 		}
 
-		constexpr auto config = array_from_generator<nb_sizeclass> (make_info);
-		constexpr size_t max_nb_blocks =
-		    array_max (array_map (config, get_member<const Info &, size_t, &Info::nb_blocks>) );
+		constexpr auto config = static_array_from_generator<nb_sizeclass> (make_info);
+
+		static constexpr size_t get_nb_blocks (const Info & info) { return info.nb_blocks; }
+		constexpr size_t max_nb_blocks = static_array_max (static_array_map (config, get_nb_blocks));
 
 		/* Sizeclass specific page block lists.
 		 * All active (non empty & not full) Small page blocks are threaded into their corresponding
 		 * sizeclass list.
 		 */
 		struct ActivePageBlockListTag;
-		using ActivePageBlockList = Chain<PageBlockHeader, ActivePageBlockListTag>;
+		using ActivePageBlockList = Intrusive::List<PageBlockHeader, ActivePageBlockListTag>;
 
 #ifdef ASSERT_SAFE_ENABLED
 		void print (void);

@@ -1,9 +1,10 @@
-#ifndef BOOTSTRAP_H
-#define BOOTSTRAP_H
+#ifndef ALLOCATOR_BOOTSTRAP_H
+#define ALLOCATOR_BOOTSTRAP_H
 
 #include "reporting.h"
-#include "base_defs.h"
-#include "utility.h"
+#include "gas_layout.h"
+#include "pointer.h"
+#include "memory_mapping.h"
 
 namespace Givy {
 namespace Bootstrap {

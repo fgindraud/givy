@@ -3,9 +3,6 @@
 #include "givy.h"
 #include "tests.h"
 
-#include <array>
-#include <thread>
-
 using namespace Givy;
 using namespace Givy::Allocator;
 namespace G = GlobalInstance;

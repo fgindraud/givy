@@ -9,6 +9,8 @@ LDFLAGS =
 # Options to remove unused symbols (inlined...)
 #CPPFLAGS += -ffunction-sections -Wl,--gc-sections
 
+# CPPFLAGS += -fvisibility-inlines-hidden # for gcc only, tell him to ditch inline symbols as dll exports
+
 # Debug
 #CPPFLAGS += -g -Og
 

@@ -3,9 +3,6 @@
 #include "superpage_tracker.h"
 #include "tests.h"
 
-#include <thread>
-#include <array>
-
 using namespace Givy;
 
 void sep (void) {
@@ -76,14 +73,14 @@ int main (void) {
 		std::array<std::thread, nb_th> threads;
 		barrier<nb_th + 1> wait;
 
-		for (int i = 0; i < nb_th; ++i)
+		for (int i : range (nb_th))
 			threads[i] = std::thread ([&](int thid) {
 				wait ();
-				for (int j = 0; j < nb_alloc; ++j)
+				for (int j : range (nb_alloc))
 					allocs[thid][j] = tracker.acquire (10);
 				wait ();
 				wait ();
-				for (int j = 0; j < nb_alloc; ++j)
+				for (int j : range (nb_alloc))
 					tracker.release (allocs[thid][j], 10);
 			}, i);
 

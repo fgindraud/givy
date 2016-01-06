@@ -1,9 +1,10 @@
 #define ASSERT_LEVEL_SAFE
 
-#include "utility.h"
-
 #include <iostream>
 #include <limits>
+
+#include "types.h"
+
 
 using namespace Givy;
 

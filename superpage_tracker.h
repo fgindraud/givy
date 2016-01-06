@@ -4,10 +4,10 @@
 #include <atomic>
 #include <tuple>
 
-#include "base_defs.h"
 #include "reporting.h"
-#include "utility.h"
 #include "array.h"
+#include "gas_layout.h"
+#include "bitmask.h"
 
 namespace Givy {
 namespace Allocator {
@@ -119,13 +119,13 @@ namespace Allocator {
 	};
 
 	template <typename Alloc>
-	SuperpageTracker<Alloc>::SuperpageTracker (const GasLayout & layout_, Alloc & allocator_)
+	inline SuperpageTracker<Alloc>::SuperpageTracker (const GasLayout & layout_, Alloc & allocator_)
 	    : layout (layout_),
 	      table_size (Math::divide_up (layout.superpage_total, BitArray::Bits)),
 	      mapping_table (table_size, allocator_, BitArray::zeros ()),
 	      sequence_table (table_size, allocator_, BitArray::zeros ()) {}
 
-	template <typename Alloc> size_t SuperpageTracker<Alloc>::acquire (size_t superpage_nb) {
+	template <typename Alloc> inline size_t SuperpageTracker<Alloc>::acquire (size_t superpage_nb) {
 		/* I need to find a sequence of superpage_nb consecutive 0s anywhere in the table.
 		 * For now, I perform a linear search of the table, with some optimisation to prevent
 		 * using an atomic load twice on the same integer array cell if possible.
@@ -219,7 +219,7 @@ namespace Allocator {
 	}
 
 	template <typename Alloc>
-	void SuperpageTracker<Alloc>::release (size_t superpage_num, size_t superpage_nb) {
+	inline void SuperpageTracker<Alloc>::release (size_t superpage_num, size_t superpage_nb) {
 		/* Just clear the bits in the two tables.
 		 */
 		auto loc_start = Index (superpage_num);
@@ -229,7 +229,7 @@ namespace Allocator {
 	}
 
 	template <typename Alloc>
-	void SuperpageTracker<Alloc>::trim (size_t superpage_num, size_t superpage_nb) {
+	inline void SuperpageTracker<Alloc>::trim (size_t superpage_num, size_t superpage_nb) {
 		/* Just clear the bits in the two tables.
 		 */
 		ASSERT_SAFE (superpage_nb > 1);
@@ -240,7 +240,7 @@ namespace Allocator {
 	}
 
 	template <typename Alloc>
-	size_t SuperpageTracker<Alloc>::get_block_start_num (size_t superpage_num) const {
+	inline size_t SuperpageTracker<Alloc>::get_block_start_num (size_t superpage_num) const {
 		/* Find the first 0 in the sequence_table, looking backward from the starting position.
 		 * Note that it won't check if the superpages are in the mapped table.
 		 */
@@ -259,8 +259,8 @@ namespace Allocator {
 	}
 
 	template <typename Alloc>
-	bool SuperpageTracker<Alloc>::set_mapping_bits (Index loc_start, IntType expected_start,
-	                                                Index loc_end, IntType expected_end) {
+	inline bool SuperpageTracker<Alloc>::set_mapping_bits (Index loc_start, IntType expected_start,
+	                                                       Index loc_end, IntType expected_end) {
 		ASSERT_SAFE (loc_start < loc_end);
 		if (loc_start.array_idx == loc_end.array_idx) {
 			// One cell span
@@ -302,7 +302,7 @@ namespace Allocator {
 	}
 
 	template <typename Alloc>
-	void SuperpageTracker<Alloc>::clear_mapping_bits (Index loc_start, Index loc_end) {
+	inline void SuperpageTracker<Alloc>::clear_mapping_bits (Index loc_start, Index loc_end) {
 		ASSERT_SAFE (loc_start < loc_end);
 		if (loc_start.array_idx == loc_end.array_idx) {
 			// One cell span
@@ -322,7 +322,7 @@ namespace Allocator {
 	}
 
 	template <typename Alloc>
-	void SuperpageTracker<Alloc>::set_sequence_bits (Index loc_start, Index loc_end) {
+	inline void SuperpageTracker<Alloc>::set_sequence_bits (Index loc_start, Index loc_end) {
 		// No need to compare_exchange ; we are supposed to own the sequence bits as we reserved the
 		// area through mapping bits
 		ASSERT_SAFE (loc_start <= loc_end);
@@ -346,7 +346,7 @@ namespace Allocator {
 	}
 
 	template <typename Alloc>
-	void SuperpageTracker<Alloc>::clear_sequence_bits (Index loc_start, Index loc_end) {
+	inline void SuperpageTracker<Alloc>::clear_sequence_bits (Index loc_start, Index loc_end) {
 		ASSERT_SAFE (loc_start <= loc_end);
 		if (loc_start.array_idx == loc_end.array_idx) {
 			// One cell span
@@ -364,12 +364,12 @@ namespace Allocator {
 				sequence_table[i].store (BitArray::zeros (), std::memory_order_seq_cst);
 			if (last_cell_bits != BitArray::zeros ())
 				sequence_table[loc_end.array_idx].fetch_and (~last_cell_bits, std::memory_order_seq_cst);
-	}
+		}
 	}
 
 	template <typename Alloc>
-	bool SuperpageTracker<Alloc>::set_bits (Index loc_start, IntType expected_start, Index loc_end,
-	                                        IntType expected_end) {
+	inline bool SuperpageTracker<Alloc>::set_bits (Index loc_start, IntType expected_start,
+	                                               Index loc_end, IntType expected_end) {
 		/* Sets bits to release a superpage sequence.
 		 * mapping_table is set first, then sequence_table if we were successful.
 		 * set_sequence_bits lets the first bit as 0 to mark the start of sequence.
@@ -383,7 +383,7 @@ namespace Allocator {
 	}
 
 	template <typename Alloc>
-	void SuperpageTracker<Alloc>::clear_bits (Index loc_start, Index loc_end) {
+	inline void SuperpageTracker<Alloc>::clear_bits (Index loc_start, Index loc_end) {
 		/* Clears bits to release a superpage sequence.
 		 * sequence_table is cleared first, then mapping_table.
 		 * we do not clear the start_of_sequence 0 bit (useless).
@@ -391,9 +391,9 @@ namespace Allocator {
 		clear_sequence_bits (loc_start.next (), loc_end);
 		clear_mapping_bits (loc_start, loc_end);
 	}
-	
+
 	template <typename Alloc>
-	void SuperpageTracker<Alloc>::trim_bits (Index loc_start, Index loc_end) {
+	inline void SuperpageTracker<Alloc>::trim_bits (Index loc_start, Index loc_end) {
 		/* Clears bits to trim a superpage sequence to 1 superpage.
 		 * sequence_table is cleared first, then mapping_table.
 		 */
@@ -402,7 +402,8 @@ namespace Allocator {
 	}
 
 #ifdef ASSERT_SAFE_ENABLED
-	template <typename Alloc> void SuperpageTracker<Alloc>::print (int superpage_by_line) const {
+	template <typename Alloc>
+	inline void SuperpageTracker<Alloc>::print (int superpage_by_line) const {
 		const int indicator_interval = 10;
 		const int line_prefix_size = 10;
 		ASSERT_SAFE (superpage_by_line > 0);
@@ -419,7 +420,7 @@ namespace Allocator {
 		// Data
 		IntType m = 0;
 		IntType s = 0;
-		for (int node = 0; node < layout.nb_node; ++node) {
+		for (auto node : range (layout.nb_node)) {
 			size_t start = layout.node_area_start_superpage_num (node);
 			for (size_t sp = start; sp < layout.node_area_end_superpage_num (node); ++sp) {
 				if ((sp - start) % superpage_by_line == 0)

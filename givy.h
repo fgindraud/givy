@@ -2,7 +2,7 @@
 #define GIVY_H
 
 #include "reporting.h"
-#include "base_defs.h"
+#include "gas_layout.h"
 #include "allocator.h"
 
 namespace Givy {

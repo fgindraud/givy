@@ -4,45 +4,47 @@
 #include <array>
 #include <utility>
 #include <type_traits>
-#include <iterator>
+
+#include "pointer.h"
+#include "range.h"
 
 namespace Givy {
 
 /* C-like constant size array type
  */
-template <typename T, size_t N> using Array = std::array<T, N>;
+template <typename T, size_t N> using StaticArray = std::array<T, N>;
 
-/* Build a Array by taking the result of a Callable f over integers [0, N[
+/* Build a StaticArray by taking the result of a Callable f over integers [0, N[
  */
 template <typename Func, size_t... I>
-constexpr Array<std::decay_t<std::result_of_t<Func (size_t)>>, sizeof...(I)>
-array_from_generator_aux (Func && f, std::index_sequence<I...>) {
+constexpr StaticArray<std::decay_t<std::result_of_t<Func (size_t)>>, sizeof...(I)>
+static_array_from_generator_aux (Func && f, std::index_sequence<I...>) {
 	return {std::forward<Func> (f) (I)...};
 }
-template <size_t N, typename Func> constexpr decltype (auto) array_from_generator (Func && f) {
-	return array_from_generator_aux (std::forward<Func> (f), std::make_index_sequence<N> ());
+template <size_t N, typename Func> constexpr decltype (auto) static_array_from_generator (Func && f) {
+	return static_array_from_generator_aux (std::forward<Func> (f), std::make_index_sequence<N> ());
 }
 
-/* Build an Array by taking the result of a Callable f over a second Array
+/* Build an StaticArray by taking the result of a Callable f over a second StaticArray
  */
 template <typename T, typename Func, size_t... I>
-constexpr Array<std::decay_t<std::result_of_t<Func (T)>>, sizeof...(I)>
-array_map_aux (const Array<T, sizeof...(I)> & a, Func && f, std::index_sequence<I...>) {
+constexpr StaticArray<std::decay_t<std::result_of_t<Func (T)>>, sizeof...(I)>
+static_array_map_aux (const StaticArray<T, sizeof...(I)> & a, Func && f, std::index_sequence<I...>) {
 	return {std::forward<Func> (f) (std::get<I> (a))...};
 }
 template <typename T, size_t N, typename Func>
-constexpr decltype (auto) array_map (const Array<T, N> & a, Func && f) {
-	return array_map_aux (a, std::forward<Func> (f), std::make_index_sequence<N> ());
+constexpr decltype (auto) static_array_map (const StaticArray<T, N> & a, Func && f) {
+	return static_array_map_aux (a, std::forward<Func> (f), std::make_index_sequence<N> ());
 }
 
-/* Return the max element of an Array.
+/* Return the max element of an StaticArray.
  */
 template <typename T, size_t... I>
-constexpr T array_max_aux (const Array<T, sizeof...(I)> & a, std::index_sequence<I...>) {
+constexpr T static_array_max_aux (const StaticArray<T, sizeof...(I)> & a, std::index_sequence<I...>) {
 	return std::max ({std::get<I> (a)...});
 }
-template <typename T, size_t N> constexpr decltype (auto) array_max (const Array<T, N> & a) {
-	return array_max_aux (a, std::make_index_sequence<N> ());
+template <typename T, size_t N> constexpr decltype (auto) static_array_max (const StaticArray<T, N> & a) {
+	return static_array_max_aux (a, std::make_index_sequence<N> ());
 }
 
 /* Dynamic non-resizable heap array supporting custom allocators
@@ -66,12 +68,12 @@ public:
 		ASSERT_SAFE (memory.ptr != nullptr);
 
 		// Construct
-		for (size_t i = 0; i < size (); ++i)
+		for (auto i : range (size ()))
 			new (&(array ()[i])) T (args...);
 	}
 	~FixedArray () {
 		// Destruct
-		for (size_t i = 0; i < size (); ++i)
+		for (auto i : range (size ()))
 			array ()[i].~T ();
 
 		// Deallocate
