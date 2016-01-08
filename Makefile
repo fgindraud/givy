@@ -7,9 +7,8 @@ CPPFLAGS += -pthread
 LDFLAGS = 
 
 # Options to remove unused symbols (inlined...)
-#CPPFLAGS += -ffunction-sections -Wl,--gc-sections
-
-# CPPFLAGS += -fvisibility-inlines-hidden # for gcc only, tell him to ditch inline symbols as dll exports
+FLAGS_OPT = -ffunction-sections -Wl,--gc-sections
+FLAGS_OPT += -fvisibility-inlines-hidden # for gcc only, tell him to ditch inline symbols as dll exports
 
 # Debug
 #CPPFLAGS += -g -Og
@@ -23,7 +22,7 @@ test_%: %.t.cpp $(wildcard *.h)
 	g++ $(CPPFLAGS) -o $@ $< $(LDFLAGS)
 
 givy: main.cpp $(wildcard *.h)
-	g++ $(CPPFLAGS) -o $@ $< $(LDFLAGS)
+	g++ $(CPPFLAGS) $(FLAGS_OPT) -o $@ $< $(LDFLAGS)
 
 clean:
 	$(RM) $(TESTS_EXEC) givy

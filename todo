@@ -1,17 +1,12 @@
 std::thread::hardware_concurrency ()
 
-Linkage / structure:
-- never use multiple
-
 Allocator:
 - sizeclasses
 	- better sizeclass sizes ?
 
 - superpage header
-	- head -> use index
-	- better pack page block headers for cache locality (struct of arrays ?)
+	- new page block manager structure in progress (use indexes)
 	- separate in spb_h and spb types
-	- page block interval structure
 
 - virtual mapping overhaul (low priority)
 	- class that implements setup/map/destroy/cleanup

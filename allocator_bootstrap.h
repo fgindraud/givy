@@ -7,9 +7,9 @@
 #include "memory_mapping.h"
 
 namespace Givy {
-namespace Bootstrap {
-	class Allocator {
-		/* Boostrap allocator is a down growing bump pointer allocator.
+namespace Allocator {
+	class Bootstrap {
+		/* Bootstrap allocator is a down growing bump pointer allocator.
 		 *
 		 * Not thread safe.
 		 * Always return memory (or fails).
@@ -22,11 +22,10 @@ namespace Bootstrap {
 		Ptr end_mapped;  // rightmost mapped segment (after last mapped byte)
 
 	public:
-		explicit Allocator (Ptr start)
-		    : left (start), left_mapped (start), end_mapped (start) {
+		explicit Bootstrap (Ptr start) : left (start), left_mapped (start), end_mapped (start) {
 			ASSERT_SAFE (start.is_aligned (VMem::PageSize));
 		}
-		~Allocator () {
+		~Bootstrap () {
 			if (left_mapped < end_mapped)
 				VMem::unmap (left_mapped, end_mapped - left_mapped);
 		}

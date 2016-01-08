@@ -11,6 +11,8 @@
 #include "intrusive_list.h"
 #include "superpage_tracker.h"
 #include "allocator_bootstrap.h"
+#include "allocator_defs.h"
+#include "allocator_page_block_manager.h"
 
 namespace Givy {
 namespace Allocator {
@@ -122,20 +124,6 @@ namespace Allocator {
 #ifdef ASSERT_SAFE_ENABLED
 		void print (void);
 #endif
-	};
-
-	enum class MemoryType : uint8_t {
-		/* Enum type used to represent the usage of a piece of memory.
-	   */
-
-		// Allocations
-		Small,  // Under the page size
-		Medium, // Between page and superpage size
-		Huge,   // Above superpage size
-
-		// Internal definitions
-		Unused,  // Unused space, can be allocated
-		Reserved // Used internally, not available for allocation
 	};
 
 	struct PageBlockHeader : public PageBlockUnusedList::Element,
@@ -303,8 +291,8 @@ namespace Allocator {
 		 * Mainly hosts the superpage_tracker, and is responsible for SPB creation and destruction.
 		 */
 		const GasLayout layout;
-		Bootstrap::Allocator bootstrap_allocator;
-		SuperpageTracker<Bootstrap::Allocator> superpage_tracker;
+		Bootstrap bootstrap_allocator;
+		SuperpageTracker<Bootstrap> superpage_tracker;
 
 		/* Creation / destruction
 		 */
@@ -576,7 +564,7 @@ namespace Allocator {
 	}
 
 	size_t SuperpageBlock::page_block_index (const PageBlockHeader & pbh) const {
-		return &pbh - pbh_table;
+		return array_index (pbh, pbh_table);
 	}
 
 	Ptr SuperpageBlock::page_block_ptr (const PageBlockHeader & pbh) const {
@@ -736,8 +724,7 @@ namespace Allocator {
 			// remove page blocks from active sizeclass list
 			for (size_t i = 0; i < VMem::SuperpagePageNB; i += spb.page_block_header (i).size ())
 				if (spb.page_block_header (i).type == MemoryType::Small)
-					/* TODO remove if it was in list... need an "active" method on PB */;
-			// TODO reinsert on adoption
+					SizeClass::ActivePageBlockList::unlink (spb.page_block_header (i));
 
 			spb.disown ();
 		}
@@ -785,6 +772,14 @@ namespace Allocator {
 		 */
 		if (owner == nullptr && spb.adopt (this)) {
 			owned_superpage_blocks.push_back (spb);
+
+			// Add active page blocks to sizeclass active lists
+			for (size_t i = 0; i < VMem::SuperpagePageNB; i += spb.page_block_header (i).size ()) {
+				auto & pbh = spb.page_block_header (i);
+				if (pbh.type == MemoryType::Small)
+					active_small_page_blocks[pbh.sb_sizeclass].push_back (pbh);
+			}
+
 			owner = this;
 		}
 
@@ -799,7 +794,8 @@ namespace Allocator {
 			 *
 			 * All allocations have alignement and size at least those of UnusedBlock.
 			 * So all allocations boundaries are on a "grid" made of UnusedBlock.
-			 * ptr.align (sizeof (UnusedBlock)) will ensure that the temporary UnusedBlock is not crossing
+			 * ptr.align (sizeof (UnusedBlock)) will ensure that the temporary UnusedBlock is not
+			 * crossing
 			 * any Block boundary, so constructing one is ok.
 			 */
 			UnusedBlock * blk = new (ptr.align (sizeof (UnusedBlock))) UnusedBlock (spb);

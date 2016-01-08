@@ -21,7 +21,8 @@ constexpr StaticArray<std::decay_t<std::result_of_t<Func (size_t)>>, sizeof...(I
 static_array_from_generator_aux (Func && f, std::index_sequence<I...>) {
 	return {std::forward<Func> (f) (I)...};
 }
-template <size_t N, typename Func> constexpr decltype (auto) static_array_from_generator (Func && f) {
+template <size_t N, typename Func>
+constexpr decltype (auto) static_array_from_generator (Func && f) {
 	return static_array_from_generator_aux (std::forward<Func> (f), std::make_index_sequence<N> ());
 }
 
@@ -29,7 +30,8 @@ template <size_t N, typename Func> constexpr decltype (auto) static_array_from_g
  */
 template <typename T, typename Func, size_t... I>
 constexpr StaticArray<std::decay_t<std::result_of_t<Func (T)>>, sizeof...(I)>
-static_array_map_aux (const StaticArray<T, sizeof...(I)> & a, Func && f, std::index_sequence<I...>) {
+static_array_map_aux (const StaticArray<T, sizeof...(I)> & a, Func && f,
+                      std::index_sequence<I...>) {
 	return {std::forward<Func> (f) (std::get<I> (a))...};
 }
 template <typename T, size_t N, typename Func>
@@ -40,10 +42,12 @@ constexpr decltype (auto) static_array_map (const StaticArray<T, N> & a, Func &&
 /* Return the max element of an StaticArray.
  */
 template <typename T, size_t... I>
-constexpr T static_array_max_aux (const StaticArray<T, sizeof...(I)> & a, std::index_sequence<I...>) {
+constexpr T static_array_max_aux (const StaticArray<T, sizeof...(I)> & a,
+                                  std::index_sequence<I...>) {
 	return std::max ({std::get<I> (a)...});
 }
-template <typename T, size_t N> constexpr decltype (auto) static_array_max (const StaticArray<T, N> & a) {
+template <typename T, size_t N>
+constexpr decltype (auto) static_array_max (const StaticArray<T, N> & a) {
 	return static_array_max_aux (a, std::make_index_sequence<N> ());
 }
 
@@ -97,6 +101,21 @@ public:
 		return array ()[i];
 	}
 };
+
+/* Computing index of elements in arrays from pointers
+ */
+template <typename T> inline size_t array_index (const T * t, const T * a) {
+	return t - a;
+}
+template <typename T> inline size_t array_index (const T & t, const T * a) {
+	return array_index (&t, a);
+}
+template <typename T, size_t N> inline size_t array_index (const T * t, const StaticArray<T, N> & a) {
+	return array_index (t, a.data ());
+}
+template <typename T, size_t N> inline size_t array_index (const T & t, const StaticArray<T, N> & a) {
+	return array_index (&t, a);
+}
 }
 
 #endif
