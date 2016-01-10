@@ -58,7 +58,7 @@
  */
 #define ASSERT_FAIL(text)                                                                          \
 	do {                                                                                             \
-		std::printf ("Assert '%s' failed, file '%s', at line %d\n", text, __FILE__, __LINE__);         \
+		std::printf ("[file=%s][line=%d] Assert '%s' failed\n", __FILE__, __LINE__, text);             \
 		std::abort ();                                                                                 \
 	} while (false)
 
@@ -101,6 +101,26 @@
 #define DEBUG_TEXT(...) std::fprintf (::stderr, __VA_ARGS__)
 #else
 #define DEBUG_TEXT(...)
+#endif
+
+#ifdef ASSERT_STD_ENABLED
+#define INFO_TEXT(...) std::fprintf (::stderr, __VA_ARGS__)
+#else
+#define INFO_TEXT(...)
+#endif
+
+/* ------------------------ 'nice' failure ----------------------------
+ *
+ * Abort nicely (using exit()).
+ */
+#ifdef ASSERT_STD_ENABLED
+#define FAILURE(str, ...)                                                                          \
+	do {                                                                                             \
+		std::fprintf (::stderr, "[file=%s][line=%d] " str "\n", __FILE__, __LINE__, ##__VA_ARGS__);    \
+		std::exit (EXIT_FAILURE);                                                                      \
+	} while (false)
+#else
+#define FAILURE(str, ...) std::exit (EXIT_FAILURE)
 #endif
 
 #endif

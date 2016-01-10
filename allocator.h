@@ -692,11 +692,11 @@ namespace Allocator {
 #ifdef ASSERT_SAFE_ENABLED
 	void MainHeap::print (void) const {
 		printf ("Layout:\n");
-		printf ("\tnodes (local node): %d (%d)\n", layout.nb_node, layout.local_node);
+		printf ("\tnodes (local node): %zu (%zu)\n", layout.nb_node, layout.local_node);
 		printf ("\tsuperpage by node (total): %zu (%zu)\n", layout.superpage_by_node,
 		        layout.superpage_total);
 		printf ("\tnode area limits (sp index): [0");
-		for (auto n = 0; n < layout.nb_node; ++n)
+		for (auto n : range (layout.nb_node))
 			printf (",%zu", layout.node_area_end_superpage_num (n));
 		printf ("]\n");
 

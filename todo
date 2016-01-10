@@ -27,3 +27,21 @@ Allocator:
 	- SPT improvements ?
 	- owner : release-acquire seems good
 
+Coherence:
+- CCI improvements
+	- add callback support, and remove our own thread
+- add header support
+
+Structure:
+- Keep most code in header (especially template stuff, like allocator)
+- Put network in ccp file ?
+- Have one cpp file for global interface (one class inside Givy)
+
+It would be nice to dynamically join the GAS:
+- connect to anyone at startup, and get an unused Id (up to a limit ?)
+- needs a reconfigurable Givy::Allocator:
+	- allocate from node "-1" until node_id has been got
+	- hopefully only internal structures (node local) have been allocated
+	- prevent any sharing from area -1
+	- switch to area N afterwards, and remove any area -1 block from active lists
+

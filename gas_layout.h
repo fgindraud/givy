@@ -31,8 +31,8 @@ struct GasLayout {
 	 */
 	const Ptr start;
 	const size_t space_by_node;
-	const int nb_node;
-	const int local_node;
+	const size_t nb_node;
+	const size_t local_node;
 
 	const size_t superpage_by_node;
 	const size_t superpage_total;
@@ -40,7 +40,7 @@ struct GasLayout {
 	const Ptr local_area_start;
 	const Ptr local_area_end;
 
-	GasLayout (Ptr start_, size_t space_by_node_, int nb_node_, int local_node_)
+	GasLayout (Ptr start_, size_t space_by_node_, size_t nb_node_, size_t local_node_)
 	    : start (Ptr (start_).align_up (VMem::SuperpageSize)),
 	      space_by_node (Math::align_up (space_by_node_, VMem::SuperpageSize)),
 	      nb_node (nb_node_),
@@ -56,15 +56,15 @@ struct GasLayout {
 	/* Get boundaries of node memory areas.
 	 * This is in superpage number (index from the first superpage at start pointer).
 	 */
-	size_t node_area_start_superpage_num (int node) const { return superpage_by_node * node; }
-	size_t node_area_end_superpage_num (int node) const {
+	size_t node_area_start_superpage_num (size_t node) const { return superpage_by_node * node; }
+	size_t node_area_end_superpage_num (size_t node) const {
 		return node_area_start_superpage_num (node + 1);
 	}
 	size_t local_area_start_superpage_num () const {
 		return node_area_start_superpage_num (local_node);
 	}
 	size_t local_area_end_superpage_num () const { return node_area_end_superpage_num (local_node); }
-	int area_index (Ptr ptr) const { return superpage_num (ptr) / superpage_by_node; }
+	size_t area_index (Ptr ptr) const { return superpage_num (ptr) / superpage_by_node; }
 	bool in_local_area (Ptr ptr) const { return local_area_start <= ptr && ptr < local_area_end; }
 
 	/* Conversion between pointer and superpage number.
