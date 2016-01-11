@@ -1,5 +1,7 @@
 #!/usr/bin/bash
 
+trap 'killall givy; killall name_server' EXIT
+
 name_server_uri=$(./name_server)
 
 echo "Name server started at $name_server_uri"
@@ -11,3 +13,4 @@ for ((i = 0; i < $GIVY_NB_NODE; i++)); do
 	./givy &
 done
 wait
+

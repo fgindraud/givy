@@ -43,22 +43,22 @@ struct Ptr {
 	size_t operator-(Ptr other) const { return p - other.p; }
 };
 
-bool operator<(Ptr lhs, Ptr rhs) {
+inline bool operator<(Ptr lhs, Ptr rhs) {
 	return lhs.p < rhs.p;
 }
-bool operator>(Ptr lhs, Ptr rhs) {
+inline bool operator>(Ptr lhs, Ptr rhs) {
 	return lhs.p > rhs.p;
 }
-bool operator<=(Ptr lhs, Ptr rhs) {
+inline bool operator<=(Ptr lhs, Ptr rhs) {
 	return lhs.p <= rhs.p;
 }
-bool operator>=(Ptr lhs, Ptr rhs) {
+inline bool operator>=(Ptr lhs, Ptr rhs) {
 	return lhs.p >= rhs.p;
 }
-bool operator==(Ptr lhs, Ptr rhs) {
+inline bool operator==(Ptr lhs, Ptr rhs) {
 	return lhs.p == rhs.p;
 }
-bool operator!=(Ptr lhs, Ptr rhs) {
+inline bool operator!=(Ptr lhs, Ptr rhs) {
 	return lhs.p != rhs.p;
 }
 

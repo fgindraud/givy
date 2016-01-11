@@ -21,14 +21,14 @@ test_%: %.t.cpp $(wildcard *.h)
 givy: CPPFLAGS += -ffunction-sections
 givy: LDFLAGS += -Wl,--gc-sections
 givy: LDFLAGS += -lcci
-givy: main.cpp $(wildcard *.h)
-	g++ $(CPPFLAGS) -o $@ $< $(LDFLAGS)
+givy: main.cpp givy.cpp $(wildcard *.h)
+	g++ $(CPPFLAGS) -o $@ main.cpp givy.cpp $(LDFLAGS)
 
 # Registering server
 name_server: LDFLAGS += -lcci
-name_server: name_server.cpp reporting.h
+name_server: name_server.cpp $(wildcard *.h)
 	g++ $(CPPFLAGS) -o $@ $< $(LDFLAGS)
 
 clean:
-	$(RM) $(TESTS_EXEC) givy server
+	$(RM) $(TESTS_EXEC) givy name_server
 

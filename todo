@@ -35,7 +35,7 @@ Coherence:
 Structure:
 - Keep most code in header (especially template stuff, like allocator)
 - Put network in ccp file ?
-- Have one cpp file for global interface (one class inside Givy)
+- C-ify interface... hard
 
 It would be nice to dynamically join the GAS:
 - connect to anyone at startup, and get an unused Id (up to a limit ?)
