@@ -59,16 +59,16 @@ namespace Allocator {
 	namespace Thresholds {
 		/* Size constants that delimit the behaviour of the allocator.
 		 *
-		 * Smallest represents the smallest possible block of allocation.
+		 * smallest represents the smallest possible block of allocation.
 		 * It cannot be smaller because we need every block to at least fit a UnusedBlock, to avoid
 		 * undefined behavior if we thread it in a BlockFreeList.
 		 *
-		 * SmallMedium is user defined, and is not very constrained.
-		 * MediumHigh is constrained by SuperpageBlock structure.
+		 * small_medium is user defined, and is not very constrained.
+		 * medium_high is constrained by SuperpageBlock structure.
 		 */
-		constexpr size_t Smallest = Math::round_up_as_power_of_2 (sizeof (UnusedBlock));
-		constexpr size_t SmallMedium = Math::round_up_as_power_of_2 (VMem::PageSize);
-		// Threshold for MediumHigh is defined later
+		constexpr size_t smallest = Math::round_up_as_power_of_2 (sizeof (UnusedBlock));
+		constexpr size_t small_medium = Math::round_up_as_power_of_2 (VMem::page_size);
+		// Threshold for medium_high is defined later
 	}
 
 	namespace SizeClass {
@@ -81,8 +81,8 @@ namespace Allocator {
 		 */
 
 		// Determine the number of sizeclasses.
-		constexpr size_t min_sizeclass_log = Math::log_2_sup (Thresholds::Smallest);
-		constexpr size_t max_sizeclass_log = Math::log_2_sup (Thresholds::SmallMedium);
+		constexpr size_t min_sizeclass_log = Math::log_2_sup (Thresholds::smallest);
+		constexpr size_t max_sizeclass_log = Math::log_2_sup (Thresholds::small_medium);
 		constexpr size_t nb_sizeclass = (max_sizeclass_log - min_sizeclass_log) + 1;
 
 		/* Sizeclass Id is choosen as the log2 of the associated sizeclass, shifted so that the smallest
@@ -90,7 +90,7 @@ namespace Allocator {
 		 */
 		using Id = BoundUint<max_sizeclass_log>;
 		constexpr Id id (size_t size) {
-			ASSERT_SAFE (size >= Thresholds::Smallest);
+			ASSERT_SAFE (size >= Thresholds::smallest);
 			return Math::log_2_sup (size) - min_sizeclass_log;
 		}
 
@@ -106,7 +106,7 @@ namespace Allocator {
 		constexpr Info make_info (size_t nth_sizeclass) {
 			// TODO more page blocks on bigger sizeclasses
 			size_t bs = size_t (1) << (nth_sizeclass + min_sizeclass_log);
-			return {bs, 1, VMem::PageSize / bs, Id (nth_sizeclass)};
+			return {bs, 1, VMem::page_size / bs, Id (nth_sizeclass)};
 		}
 
 		constexpr auto config = static_array_from_generator<nb_sizeclass> (make_info);
@@ -150,7 +150,7 @@ namespace Allocator {
 		/* Represent page block layout ; will be set by format()
 		 */
 		MemoryType type;                          // Type of page block
-		BoundUint<VMem::SuperpagePageNB> nb_page; // Size of page block
+		BoundUint<VMem::superpage_page_nb> nb_page; // Size of page block
 		PageBlockHeader * head; // pointer to active header representing the page block
 
 		SizeClass::Id sb_sizeclass;
@@ -172,13 +172,14 @@ namespace Allocator {
 		void put_small_block (Ptr p, const SizeClass::Info & info);
 
 #ifdef ASSERT_SAFE_ENABLED
+	public:
 		void print (void) const;
 #endif
 	};
 
 	class SuperpageBlock : public SuperpageBlockOwnedList::Element {
 		/* Superpage block (SPB) is the basic unit of memory allocation, and are always aligned to
-		 * SuperpageSize.
+		 * superpage_size.
 		 * Superpage blocks are sequence of Superpages (size is configurable).
 		 * The SuperpageBlock class data is put at each start of Superpage block, and holds metadata for
 		 * the entire SPB.
@@ -209,8 +210,8 @@ namespace Allocator {
 		/* Superpage block header.
 		 *
 		 * huge_alloc_pb_index indicates at which page index starts the huge alloc.
-		 * If superpage_nb == 1 it must be equal to VMem::SuperpagePageNB.
-		 * If equal to VMem::SuperpagePageNB and superpage_nb > 1, it means no pages in the first
+		 * If superpage_nb == 1 it must be equal to VMem::superpage_page_nb.
+		 * If equal to VMem::superpage_page_nb and superpage_nb > 1, it means no pages in the first
 		 * superpage are part of the huge alloc.
 		 */
 		std::atomic<ThreadLocalHeap *> owner;
@@ -218,12 +219,12 @@ namespace Allocator {
 
 		size_t huge_alloc_pb_index;
 		PageBlockUnusedList unused;
-		PageBlockHeader pbh_table[VMem::SuperpagePageNB];
+		PageBlockHeader pbh_table[VMem::superpage_page_nb];
 
 	public:
 		/* SuperpageBlock structure offsets */
-		static const size_t HeaderSpacePages;
-		static const size_t AvailablePages;
+		static const size_t header_space_pages;
+		static const size_t available_pages;
 
 		/* Creation / destruction */
 		SuperpageBlock (size_t superpage_nb_, size_t huge_alloc_page_nb, ThreadLocalHeap * owner_);
@@ -267,8 +268,8 @@ namespace Allocator {
 		void format_pbh (PageBlockHeader * from, size_t size, MemoryType type);
 		void format_pbh (size_t from, size_t to, MemoryType type);
 
-	public:
 #ifdef ASSERT_SAFE_ENABLED
+	public:
 		void print (void) const;
 #endif
 	};
@@ -276,14 +277,14 @@ namespace Allocator {
 	/* Define class constant out of class, due to use of sizeof() on class SuperpageBlock (which is
 	 * invalid inside SuperpageBlock definition as it is not a complete type yet).
 	 */
-	const size_t SuperpageBlock::HeaderSpacePages =
-	    Math::divide_up (sizeof (SuperpageBlock), VMem::PageSize);
-	const size_t SuperpageBlock::AvailablePages =
-	    VMem::SuperpagePageNB - SuperpageBlock::HeaderSpacePages;
+	const size_t SuperpageBlock::header_space_pages =
+	    Math::divide_up (sizeof (SuperpageBlock), VMem::page_size);
+	const size_t SuperpageBlock::available_pages =
+	    VMem::superpage_page_nb - SuperpageBlock::header_space_pages;
 
 	namespace Thresholds {
 		// Complete definition of Thresholds.
-		constexpr size_t MediumHigh = SuperpageBlock::AvailablePages * VMem::PageSize;
+		constexpr size_t medium_high = SuperpageBlock::available_pages * VMem::page_size;
 	}
 
 	struct MainHeap {
@@ -291,8 +292,7 @@ namespace Allocator {
 		 * Mainly hosts the superpage_tracker, and is responsible for SPB creation and destruction.
 		 */
 		const GasLayout layout;
-		Bootstrap bootstrap_allocator;
-		SuperpageTracker<Bootstrap> superpage_tracker;
+		SuperpageTracker<Bootstrap> & superpage_tracker;
 
 		/* Creation / destruction
 		 */
@@ -358,8 +358,8 @@ namespace Allocator {
 		void thread_local_deallocate (Ptr ptr, SuperpageBlock & spb);
 		void process_thread_remote_frees (void);
 
-	public:
 #ifdef ASSERT_SAFE_ENABLED
+	public:
 		void print (bool print_main_heap) const;
 #endif
 	};
@@ -418,7 +418,7 @@ namespace Allocator {
 
 	void PageBlockHeader::put_small_block (Ptr p, const SizeClass::Info & info) {
 		ASSERT_SAFE (page_block () <= p);
-		ASSERT_SAFE (p < page_block () + VMem::PageSize * size ());
+		ASSERT_SAFE (p < page_block () + VMem::page_size * size ());
 
 		/* Thread block in freelist ; align ptr to block boundary in case p is not at block_start.
 		 */
@@ -429,17 +429,17 @@ namespace Allocator {
 
 #ifdef ASSERT_SAFE_ENABLED
 	void PageBlockHeader::print (void) const {
-		if (type == MemoryType::Small) {
+		if (type == MemoryType::small) {
 			auto & info = SizeClass::config[sb_sizeclass];
 			printf ("Small [S=%zu,sc=%zu,bs=%zu,cvd=%zu/%zu,un=%zu]\n", size (), size_t (sb_sizeclass),
 			        info.block_size, size_t (sb_nb_carved), info.nb_blocks, size_t (sb_nb_unused));
-		} else if (type == MemoryType::Medium) {
+		} else if (type == MemoryType::medium) {
 			printf ("Medium [S=%zu]\n", size ());
-		} else if (type == MemoryType::Huge) {
+		} else if (type == MemoryType::huge) {
 			printf ("Huge (start) [S=%zu]\n", size ());
-		} else if (type == MemoryType::Unused) {
+		} else if (type == MemoryType::unused) {
 			printf ("Unused [S=%zu]\n", size ());
-		} else if (type == MemoryType::Reserved) {
+		} else if (type == MemoryType::reserved) {
 			printf ("Reserved [S=%zu]\n", size ());
 		} else {
 			printf ("<error> [Type=%ld]\n", static_cast<long> (type));
@@ -455,15 +455,15 @@ namespace Allocator {
 		DEBUG_TEXT ("[%p]SuperpageBlock(%zu)\n", this, size ());
 
 		// Compute huge page limit in first superpage
-		ASSERT_SAFE (superpage_nb * VMem::SuperpagePageNB >= huge_alloc_page_nb + HeaderSpacePages);
-		huge_alloc_pb_index = superpage_nb * VMem::SuperpagePageNB - huge_alloc_page_nb;
+		ASSERT_SAFE (superpage_nb * VMem::superpage_page_nb >= huge_alloc_page_nb + header_space_pages);
+		huge_alloc_pb_index = superpage_nb * VMem::superpage_page_nb - huge_alloc_page_nb;
 
 		// Setup initial page blocks
 		size_t max_available_pb = available_pb_index ();
-		format_pbh (size_t (0), HeaderSpacePages, MemoryType::Reserved);
-		format_pbh (HeaderSpacePages, max_available_pb, MemoryType::Unused);
-		format_pbh (max_available_pb, VMem::SuperpagePageNB, MemoryType::Huge);
-		unused.insert (pbh_table[HeaderSpacePages]); // Add initial unused page block to list
+		format_pbh (size_t (0), header_space_pages, MemoryType::reserved);
+		format_pbh (header_space_pages, max_available_pb, MemoryType::unused);
+		format_pbh (max_available_pb, VMem::superpage_page_nb, MemoryType::huge);
+		unused.insert (pbh_table[header_space_pages]); // Add initial unused page block to list
 	}
 
 	SuperpageBlock::~SuperpageBlock () {
@@ -483,7 +483,7 @@ namespace Allocator {
 
 	SuperpageBlock & SuperpageBlock::from_pointer_in_first_superpage (Ptr inside) {
 		// Just use alignement
-		return *inside.align (VMem::SuperpageSize).as<SuperpageBlock *> ();
+		return *inside.align (VMem::superpage_size).as<SuperpageBlock *> ();
 	}
 	SuperpageBlock & SuperpageBlock::from_pbh (PageBlockHeader & pbh) {
 		// Pbh are stored in first superpage
@@ -498,14 +498,14 @@ namespace Allocator {
 
 	bool SuperpageBlock::in_huge_alloc (Ptr p) const {
 		ASSERT_SAFE (ptr () <= p);
-		ASSERT_SAFE (p < ptr () + size () * VMem::SuperpageSize);
-		return ptr () + huge_alloc_pb_index * VMem::PageSize <= p;
+		ASSERT_SAFE (p < ptr () + size () * VMem::superpage_size);
+		return ptr () + huge_alloc_pb_index * VMem::page_size <= p;
 	}
 
 	Block SuperpageBlock::huge_alloc_memory (void) const {
 		ASSERT_SAFE (superpage_nb > 1);
-		size_t huge_alloc_page_nb = superpage_nb * VMem::SuperpagePageNB - huge_alloc_pb_index;
-		return {ptr () + huge_alloc_pb_index * VMem::PageSize, huge_alloc_page_nb * VMem::PageSize};
+		size_t huge_alloc_page_nb = superpage_nb * VMem::superpage_page_nb - huge_alloc_pb_index;
+		return {ptr () + huge_alloc_pb_index * VMem::page_size, huge_alloc_page_nb * VMem::page_size};
 	}
 
 	void SuperpageBlock::destroy_huge_alloc (void) {
@@ -513,7 +513,7 @@ namespace Allocator {
 		 * As the huge alloc trailing page block was formatted to a valid page block (but with Huge
 		 * type), we can use free_page_block directly.
 		 */
-		if (huge_alloc_pb_index < VMem::SuperpagePageNB)
+		if (huge_alloc_pb_index < VMem::superpage_page_nb)
 			free_page_block (pbh_table[huge_alloc_pb_index]);
 
 		// Trim
@@ -524,7 +524,7 @@ namespace Allocator {
 
 	PageBlockHeader * SuperpageBlock::allocate_page_block (size_t page_nb, MemoryType type) {
 		ASSERT_SAFE (page_nb > 0);
-		ASSERT_SAFE (page_nb < AvailablePages);
+		ASSERT_SAFE (page_nb < available_pages);
 
 		PageBlockHeader * pbh = unused.take (page_nb);
 		if (pbh) {
@@ -532,7 +532,7 @@ namespace Allocator {
 			if (overflow_page_nb > 0) {
 				// cut overflow, configure and put back in list
 				PageBlockHeader * overflow = pbh + page_nb;
-				format_pbh (overflow, overflow_page_nb, MemoryType::Unused);
+				format_pbh (overflow, overflow_page_nb, MemoryType::unused);
 				unused.insert (*overflow);
 			}
 			// configure new alloc
@@ -545,21 +545,21 @@ namespace Allocator {
 		PageBlockHeader * start = &pbh;
 		PageBlockHeader * end = start + pbh.size ();
 		PageBlockHeader * const table_start = pbh_table;
-		PageBlockHeader * const table_end = pbh_table + VMem::SuperpagePageNB;
+		PageBlockHeader * const table_end = pbh_table + VMem::superpage_page_nb;
 		// Try merge with previous one
-		if (start > table_start && start[-1].type == MemoryType::Unused) {
+		if (start > table_start && start[-1].type == MemoryType::unused) {
 			PageBlockHeader * prev = start[-1].head;
 			unused.remove (*prev);
 			start = prev;
 		}
 		// Try merge with next one
-		if (end < table_end && end->type == MemoryType::Unused) {
+		if (end < table_end && end->type == MemoryType::unused) {
 			PageBlockHeader * next = end;
 			unused.remove (*next);
 			end = next + next->size ();
 		}
 		// Put the merged PB in the list
-		format_pbh (start, end, MemoryType::Unused);
+		format_pbh (start, end, MemoryType::unused);
 		unused.insert (*start);
 	}
 
@@ -568,11 +568,11 @@ namespace Allocator {
 	}
 
 	Ptr SuperpageBlock::page_block_ptr (const PageBlockHeader & pbh) const {
-		return ptr () + page_block_index (pbh) * VMem::PageSize;
+		return ptr () + page_block_index (pbh) * VMem::page_size;
 	}
 
 	Block SuperpageBlock::page_block_memory (const PageBlockHeader & pbh) const {
-		return {page_block_ptr (pbh), pbh.size () * VMem::PageSize};
+		return {page_block_ptr (pbh), pbh.size () * VMem::page_size};
 	}
 
 	PageBlockHeader & SuperpageBlock::page_block_header (size_t pb_index) {
@@ -581,22 +581,22 @@ namespace Allocator {
 
 	PageBlockHeader & SuperpageBlock::page_block_header (Ptr p) {
 		ASSERT_SAFE (ptr () <= p);
-		ASSERT_SAFE (p < ptr () + VMem::SuperpageSize);
-		size_t pb_index = (p - ptr ()) / VMem::PageSize;
+		ASSERT_SAFE (p < ptr () + VMem::superpage_size);
+		size_t pb_index = (p - ptr ()) / VMem::page_size;
 		return *page_block_header (pb_index).head;
 	}
 
 	bool SuperpageBlock::all_page_blocks_unused (void) const {
 		// Test if unused quicklist contains every page (except Reserved and Huge ones)
-		return unused.size () == available_pb_index () - HeaderSpacePages;
+		return unused.size () == available_pb_index () - header_space_pages;
 	}
 
 	size_t SuperpageBlock::available_pb_index (void) const {
-		/* huge_alloc_pb_index can be above SuperpagePageNB, if a huge alloc is smaller than a
+		/* huge_alloc_pb_index can be above superpage_page_nb, if a huge alloc is smaller than a
 		 * superpage.
 		 * available_pb_index () gives the max pb_index that can be used.
 		 */
-		return std::min (huge_alloc_pb_index, VMem::SuperpagePageNB);
+		return std::min (huge_alloc_pb_index, VMem::superpage_page_nb);
 	}
 
 	/* Ownership */
@@ -631,10 +631,10 @@ namespace Allocator {
 	void SuperpageBlock::print (void) const {
 		printf ("S=%zu, P=%p", size (), ptr ().as<void *> ());
 		if (size () > 1)
-			printf (" (huge alloc=%zu pages)", VMem::SuperpagePageNB * size () - huge_alloc_pb_index);
+			printf (" (huge alloc=%zu pages)", VMem::superpage_page_nb * size () - huge_alloc_pb_index);
 		printf ("\n");
 
-		for (size_t i = 0; i < VMem::SuperpagePageNB; i += pbh_table[i].size ()) {
+		for (size_t i = 0; i < VMem::superpage_page_nb; i += pbh_table[i].size ()) {
 			printf ("\t[%zu-%zu]", i, i + pbh_table[i].size ());
 			pbh_table[i].print ();
 		}
@@ -656,12 +656,12 @@ namespace Allocator {
 		/* Compute sizes
 		 * If huge_alloc_size is 0, allocates just one superpage
 		 */
-		size_t huge_alloc_page_nb = Math::divide_up (huge_alloc_size, VMem::PageSize);
-		size_t superpage_nb = Math::divide_up (huge_alloc_page_nb + SuperpageBlock::HeaderSpacePages,
-		                                       VMem::SuperpagePageNB);
+		size_t huge_alloc_page_nb = Math::divide_up (huge_alloc_size, VMem::page_size);
+		size_t superpage_nb = Math::divide_up (huge_alloc_page_nb + SuperpageBlock::header_space_pages,
+		                                       VMem::superpage_page_nb);
 		// Reserve, map, configure
 		Ptr spb_start = layout.superpage (superpage_tracker.acquire (superpage_nb));
-		VMem::map_checked (spb_start, superpage_nb * VMem::SuperpageSize);
+		VMem::map_checked (spb_start, superpage_nb * VMem::superpage_size);
 		return *new (spb_start) SuperpageBlock (superpage_nb, huge_alloc_page_nb, owner);
 	}
 
@@ -669,7 +669,7 @@ namespace Allocator {
 		Ptr spb_start = spb.ptr ();
 		spb.~SuperpageBlock (); // manual call due to placement new construction
 		superpage_tracker.release (layout.superpage_num (spb_start), spb.size ());
-		VMem::unmap_checked (spb_start, spb.size () * VMem::SuperpageSize);
+		VMem::unmap_checked (spb_start, spb.size () * VMem::superpage_size);
 	}
 
 	void MainHeap::destroy_superpage_huge_alloc (SuperpageBlock & spb) {
@@ -679,7 +679,7 @@ namespace Allocator {
 		ASSERT_STD (spb_size > 1);
 		Ptr spb_start = spb.ptr ();
 		superpage_tracker.trim (layout.superpage_num (spb_start), spb_size);
-		VMem::unmap_checked (spb_start + VMem::SuperpageSize, (spb_size - 1) * VMem::SuperpageSize);
+		VMem::unmap_checked (spb_start + VMem::superpage_size, (spb_size - 1) * VMem::superpage_size);
 
 		// Update SPB header
 		spb.destroy_huge_alloc ();
@@ -722,8 +722,8 @@ namespace Allocator {
 			owned_superpage_blocks.pop_front ();
 
 			// remove page blocks from active sizeclass list
-			for (size_t i = 0; i < VMem::SuperpagePageNB; i += spb.page_block_header (i).size ())
-				if (spb.page_block_header (i).type == MemoryType::Small)
+			for (size_t i = 0; i < VMem::superpage_page_nb; i += spb.page_block_header (i).size ())
+				if (spb.page_block_header (i).type == MemoryType::small)
 					SizeClass::ActivePageBlockList::unlink (spb.page_block_header (i));
 
 			spb.disown ();
@@ -739,17 +739,17 @@ namespace Allocator {
 		 * So we allow a simple support of up to page-size alignement, by using a size of at least
 		 * requested alignement to answer the allocate request.
 		 */
-		ASSERT_STD (align <= VMem::PageSize);
+		ASSERT_STD (align <= VMem::page_size);
 		ASSERT_STD (Math::is_power_of_2 (align));
 		size = std::max (size, align);
 
-		if (size < Thresholds::SmallMedium) {
+		if (size < Thresholds::small_medium) {
 			// Small alloc
 			return allocate_small_block (size);
-		} else if (size < Thresholds::MediumHigh) {
+		} else if (size < Thresholds::medium_high) {
 			// Big alloc
-			size_t page_nb = Math::divide_up (size, VMem::PageSize);
-			PageBlockHeader & pbh = create_page_block (page_nb, MemoryType::Medium);
+			size_t page_nb = Math::divide_up (size, VMem::page_size);
+			PageBlockHeader & pbh = create_page_block (page_nb, MemoryType::medium);
 			return SuperpageBlock::from_pbh (pbh).page_block_memory (pbh);
 		} else {
 			// Huge alloc
@@ -774,9 +774,9 @@ namespace Allocator {
 			owned_superpage_blocks.push_back (spb);
 
 			// Add active page blocks to sizeclass active lists
-			for (size_t i = 0; i < VMem::SuperpagePageNB; i += spb.page_block_header (i).size ()) {
+			for (size_t i = 0; i < VMem::superpage_page_nb; i += spb.page_block_header (i).size ()) {
 				auto & pbh = spb.page_block_header (i);
-				if (pbh.type == MemoryType::Small)
+				if (pbh.type == MemoryType::small)
 					active_small_page_blocks[pbh.sb_sizeclass].push_back (pbh);
 			}
 
@@ -840,12 +840,12 @@ namespace Allocator {
 	}
 
 	Block ThreadLocalHeap::allocate_small_block (size_t size) {
-		auto & info = SizeClass::config[SizeClass::id (std::max (size, Thresholds::Smallest))];
+		auto & info = SizeClass::config[SizeClass::id (std::max (size, Thresholds::smallest))];
 		auto & pb_list = active_small_page_blocks[info.sc_id];
 
 		// Create new page block if there is none available.
 		if (pb_list.empty ()) {
-			auto & new_pbh = create_page_block (info.page_block_size, MemoryType::Small);
+			auto & new_pbh = create_page_block (info.page_block_size, MemoryType::small);
 			new_pbh.configure_small_blocks (info);
 			pb_list.push_front (new_pbh);
 		}
@@ -879,7 +879,7 @@ namespace Allocator {
 
 	void ThreadLocalHeap::thread_local_deallocate (Ptr ptr, SuperpageBlock & spb) {
 		ASSERT_SAFE (spb.ptr () <= ptr);
-		ASSERT_SAFE (ptr < spb.ptr () + spb.size () * VMem::SuperpageSize);
+		ASSERT_SAFE (ptr < spb.ptr () + spb.size () * VMem::superpage_size);
 		if (spb.in_huge_alloc (ptr)) {
 			// Huge alloc
 			if (spb.all_page_blocks_unused ())
@@ -888,10 +888,10 @@ namespace Allocator {
 				main_heap.destroy_superpage_huge_alloc (spb);
 		} else {
 			PageBlockHeader & pbh = spb.page_block_header (ptr);
-			if (pbh.type == MemoryType::Small) {
+			if (pbh.type == MemoryType::small) {
 				// Small alloc
 				destroy_small_block (ptr, pbh, spb);
-			} else if (pbh.type == MemoryType::Medium) {
+			} else if (pbh.type == MemoryType::medium) {
 				// Medium alloc
 				destroy_page_block (pbh, spb);
 			} else {

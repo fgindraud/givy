@@ -40,7 +40,7 @@ namespace Math {
 		ASSERT_SAFE (0 < x);
 		// return : log2(x) (rounded to lower)
 		using B = BitMask<size_t>;
-		return (B::Bits - 1) - B::count_msb_zeros (x);
+		return (B::bits - 1) - B::count_msb_zeros (x);
 	}
 	constexpr size_t log_2_sup (size_t x) {
 		// require : 1 < x (due to implem)

@@ -9,13 +9,13 @@ namespace Allocator {
 	   */
 
 		// Allocations
-		Small,  // Under the page size
-		Medium, // Between page and superpage size
-		Huge,   // Above superpage size
+		small,  // Under the page size
+		medium, // Between page and superpage size
+		huge,   // Above superpage size
 
 		// Internal definitions
-		Unused,  // Unused space, can be allocated
-		Reserved // Used internally, not available for allocation
+		unused,  // Unused space, can be allocated
+		reserved // Used internally, not available for allocation
 	};
 }
 }

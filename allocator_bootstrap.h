@@ -2,43 +2,27 @@
 #define ALLOCATOR_BOOTSTRAP_H
 
 #include "reporting.h"
-#include "gas_layout.h"
 #include "pointer.h"
-#include "memory_mapping.h"
+
+#include <cstdlib>
 
 namespace Givy {
 namespace Allocator {
 	class Bootstrap {
-		/* Bootstrap allocator is a down growing bump pointer allocator.
-		 *
-		 * Not thread safe.
-		 * Always return memory (or fails).
-		 * Behave as region allocators : cannot deallocate invididual blocks, but deallocates everything
-		 * at destruction.
+		/* Bootstrap allocator is temporarily malloc/free of libc.
+		 * TODO use mmap (will break if symbols are overriden)
 		 */
-	private:
-		Ptr left;        // leftmost point of used segment (first used byte)
-		Ptr left_mapped; // leftmost mapped segment (first mapped byte)
-		Ptr end_mapped;  // rightmost mapped segment (after last mapped byte)
-
 	public:
-		explicit Bootstrap (Ptr start) : left (start), left_mapped (start), end_mapped (start) {
-			ASSERT_SAFE (start.is_aligned (VMem::PageSize));
-		}
-		~Bootstrap () {
-			if (left_mapped < end_mapped)
-				VMem::unmap (left_mapped, end_mapped - left_mapped);
-		}
-
 		Block allocate (size_t size, size_t align) {
-			left = left.sub (size).align (align);
-			if (!(left >= left_mapped)) {
-				Ptr map_from = left.align (VMem::PageSize);
-				VMem::map_checked (map_from, left_mapped - map_from);
-			}
-			return {left, size};
+			ASSERT_SAFE (align > sizeof (void *));
+			ASSERT_SAFE (Math::is_power_of_2 (align));
+			ASSERT_SAFE (size > 0);
+			void * p{nullptr};
+			int r = posix_memalign (&p, align, size);
+			ASSERT_SAFE (r == 0);
+			return {Ptr (p), size};
 		}
-		void deallocate (Block) {}
+		void deallocate (Block blk) { free (blk.ptr); }
 	};
 }
 }

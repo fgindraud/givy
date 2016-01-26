@@ -32,6 +32,12 @@ namespace VMem {
 		int discard_r = discard (page_start, size);
 		ASSERT_OPT (discard_r == 0);
 	}
+
+	static inline Ptr map_anywhere (size_t size) {
+		void * p = mmap (nullptr, size, PROT_READ | PROT_WRITE | PROT_EXEC, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+		ASSERT_OPT (p != MAP_FAILED);
+		return Ptr (p);
+	}
 }
 }
 

@@ -18,6 +18,7 @@ test_%: %.t.cpp $(wildcard *.h)
 	g++ $(CPPFLAGS) -o $@ $< $(LDFLAGS)
 
 # Main test app
+givy: CPPFLAGS += -DASSERT_LEVEL_NONE
 givy: CPPFLAGS += -ffunction-sections
 givy: LDFLAGS += -Wl,--gc-sections
 givy: LDFLAGS += -lcci

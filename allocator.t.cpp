@@ -11,8 +11,8 @@ GasLayout init (void) {
 	VMem::runtime_asserts ();
 
 	/* Determining program break, placing Givy after (+ some pages in the middle) */
-	return {Ptr (sbrk (0)) + 1000 * VMem::PageSize, // start
-	        100 * VMem::SuperpageSize,              // space_by_node
+	return {Ptr (sbrk (0)) + 1000 * VMem::page_size, // start
+	        100 * VMem::superpage_size,              // space_by_node
 	        4,                                      // nb_node
 	        0};                                     // local node
 }
@@ -70,11 +70,11 @@ int main (void) {
 #if DETERMINISTIC_MONOTHREAD_TEST
 	{
 		constexpr size_t from = 2;
-		constexpr size_t to = VMem::SuperpageShift + 1;
+		constexpr size_t to = VMem::superpage_shift + 1;
 		std::array<Block, to + 1> under;
 		std::array<Block, to + 1> exact;
 		std::array<Block, to + 1> above;
-		// Just above SuperpageBlock::AvailablePages, but smaller than superpagesize
+		// Just above SuperpageBlock::available_pages, but smaller than superpagesize
 		Block small_superpage;
 
 		for (size_t i = from; i <= to; ++i)
@@ -83,7 +83,7 @@ int main (void) {
 			exact[i] = G::allocate ((size_t (1) << i), 1);
 		for (size_t i = from; i <= to; ++i)
 			above[i] = G::allocate ((size_t (1) << i) + 1, 1);
-		small_superpage = G::allocate ((SuperpageBlock::AvailablePages + 1) * VMem::PageSize, 1);
+		small_superpage = G::allocate ((SuperpageBlock::available_pages + 1) * VMem::page_size, 1);
 		show ("Allocation", true);
 
 		for (size_t i = to; i >= from; --i)
@@ -108,7 +108,7 @@ int main (void) {
 	{
 		constexpr int nb_th = 2;
 		constexpr size_t from = 2;
-		constexpr size_t to = VMem::SuperpageShift + 1;
+		constexpr size_t to = VMem::superpage_shift + 1;
 		std::array<std::array<Block, to + 1>, nb_th> allocs;
 
 		barrier<nb_th> wait;

@@ -17,8 +17,8 @@ struct SystemAlloc {
 
 int main (void) {
 	SystemAlloc alloc;
-	GasLayout layout (nullptr, 500 * VMem::SuperpageSize, 1, 0);
-	Allocator::SuperpageTracker<SystemAlloc> tracker (layout, alloc);
+	GasLayout layout (nullptr, 500 * VMem::superpage_size, 1, 0);
+	SuperpageTracker<SystemAlloc> tracker (layout, alloc);
 
 	sep ();
 	{

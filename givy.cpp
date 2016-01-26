@@ -2,15 +2,15 @@
  *
  * defines interface functions (C-like)
  */
-#define ASSERT_LEVEL_SAFE
-
 #include <cstdlib>
 
+#include "types.h"
 #include "givy.h"
 #include "allocator.h"
 #include "network.h"
 
 namespace {
+using namespace Givy;
 
 size_t env_num (const char * env_var) {
 	const char * s = std::getenv (env_var);
@@ -20,8 +20,8 @@ size_t env_num (const char * env_var) {
 		return static_cast<size_t> (std::strtoull (s, nullptr, 10));
 }
 
-Givy::GasLayout main_heap_init (void) {
-	Givy::VMem::runtime_asserts ();
+GasLayout main_heap_init (void) {
+	VMem::runtime_asserts ();
 
 	// Node indication
 	size_t nb_node = env_num ("GIVY_NB_NODE");
@@ -40,23 +40,33 @@ Givy::GasLayout main_heap_init (void) {
 	auto gas_place = Ptr (0x4000'0000'0000);
 
 	return {gas_place,                       // start
-	        100 * Givy::VMem::SuperpageSize, // space_by_node (~200M)
+	        100 * VMem::superpage_size, // space_by_node (~200M)
 	        nb_node,                         // nb_node
 	        node_id};                        // local node
 }
 
+// Bootstrap allocator has no init dependencies
+Allocator::Bootstrap bootstrap_allocator {};
+
+GasLayout layout{main_heap_init ()};
+
+Allocator::MainHeap main_heap{layout};
+Network network_interface{layout};
+
 /* Due to c++ thread_local semantics, ThreadLocalHeap objects will be constructed/destructed
- * at every thread start/end
+ * at every thread start (or first reference) / end.
  */
-Givy::GasLayout layout{main_heap_init ()};
-Givy::Allocator::MainHeap main_heap{layout};
-thread_local Givy::Allocator::ThreadLocalHeap thread_heap{main_heap};
-Givy::Network network_interface{layout};
+thread_local Allocator::ThreadLocalHeap thread_heap{main_heap};
 }
 
 void init (int * argc, char ** argv[]) {
-	(void) argc;
-	(void) argv;
+
+	//Givy::init_network (argc, argv);
+
+	//size_t nb_node = ...;
+	//size_t node_local = ...;
+
+	//Givy::init_allocator ();
 }
 
 Block allocate (size_t size, size_t align) {
