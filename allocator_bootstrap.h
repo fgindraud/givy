@@ -14,11 +14,12 @@ namespace Allocator {
 		 */
 	public:
 		Block allocate (size_t size, size_t align) {
-			ASSERT_SAFE (align > sizeof (void *));
+			ASSERT_SAFE (align >= sizeof (void *));
 			ASSERT_SAFE (Math::is_power_of_2 (align));
 			ASSERT_SAFE (size > 0);
-			void * p{nullptr};
+			void * p = nullptr;
 			int r = posix_memalign (&p, align, size);
+			(void) r;
 			ASSERT_SAFE (r == 0);
 			return {Ptr (p), size};
 		}

@@ -4,8 +4,10 @@
 #include <iterator>
 #include <atomic>
 #include <tuple>
+#include <mutex>
 
 #include "reporting.h"
+#include "concurrency.h"
 
 namespace Givy {
 namespace Intrusive {
@@ -237,6 +239,34 @@ namespace Intrusive {
 		 * Cuts a->link, link->b, generates a->b, link->link.
 		 */
 		static void extract (Element * link) { cross (link, link); }
+
+	public:
+		/* Atomic list protected by a lock.
+		 */
+		class Atomic {
+		private:
+			SpinLock mutex;
+			List list;
+
+		public:
+			void push_front (T & t) {
+				std::lock_guard<decltype (mutex)> lock (mutex);
+				list.push_front (t);
+			}
+			void push_back (T & t) {
+				std::lock_guard<decltype (mutex)> lock (mutex);
+				list.push_back (t);
+			}
+			void remove (T & t) {
+				std::lock_guard<decltype (mutex)> lock (mutex);
+				list.remove (t);
+			}
+			template <typename Callable> void apply_all (Callable && callable) {
+				std::lock_guard<decltype (mutex)> lock (mutex);
+				for (auto & t : list)
+					callable (t);
+			}
+		};
 	};
 
 	template <typename T, size_t exact_size_slot_nb> struct QuickList {

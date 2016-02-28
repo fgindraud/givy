@@ -36,36 +36,56 @@ private:
 	};
 
 public:
+	ManualConstruct () {}
+	ManualConstruct (const ManualConstruct &) = delete;
+	ManualConstruct (ManualConstruct &&) = delete;
+	ManualConstruct & operator=(const ManualConstruct &) = delete;
+	ManualConstruct & operator=(ManualConstruct &&) = delete;
+	~ManualConstruct () {}
+
 	template <typename... Args> void construct (Args &&... args) {
 		::new (&stored) T (std::forward<Args> (args)...);
 	}
-	void destruct (void) { stored->~T (); }
-	operator T &(void) { return stored; }
-	operator const T &(void) const & { return stored; }
+	void destruct (void) { stored.~T (); }
+
+	T & value (void) { return stored; }
+	const T & value (void) const { return stored; }
 };
 
-/* Checked class container : use a boolean to destroy when created.
+/* Optional : manually constructed object, with boolean to track state.
  */
-template <typename T> class ManualConstructChecked : public ManualConstruct<T> {
+template <typename T> class Optional {
 private:
 	bool constructed{false};
-	using Parent = ManualConstruct<T>;
+	ManualConstruct<T> object;
 
 public:
-	~ManualConstructChecked () {
+	Optional () = default;
+	~Optional () {
 		if (constructed)
-			destruct ();
+			object.destruct ();
 	}
+
 	template <typename... Args> void construct (Args &&... args) {
 		ASSERT_SAFE (!constructed);
-		Parent::construct (std::forward<Args> (args)...);
+		object.construct (std::forward<Args> (args)...);
 		constructed = true;
 	}
 	void destruct (void) {
 		ASSERT_SAFE (constructed);
-		Parent::destruct ();
+		object.destruct ();
+		constructed = false;
 	}
 	bool is_constructed (void) const { return constructed; }
+
+	T & value (void) {
+		ASSERT_SAFE (constructed);
+		return object.value ();
+	}
+	const T & value (void) const {
+		ASSERT_SAFE (constructed);
+		return object.value ();
+	}
 };
 }
 

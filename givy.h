@@ -3,17 +3,16 @@
 
 #include "pointer.h"
 
-using Givy::Block;
-using Givy::Ptr;
-
+namespace Givy {
 /* Init
  */
-void init (int * argc, char ** argv[]);
+void init (int & argc, char **& argv);
 
 /* Allocator interface
  */
 Block allocate (size_t size, size_t align);
 void deallocate (Block blk);
 void deallocate (Ptr ptr);
+}
 
 #endif

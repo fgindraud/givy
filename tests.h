@@ -22,6 +22,8 @@ template <int N> struct barrier {
 	barrier () { local_flags.fill (true); }
 	void wait (void) {
 		int th_id = uid;
+		if (th_id == -1)
+			th_id = uid = barrier<N>::new_uid ();
 		if (th_id == 0) {
 			// Master
 			if (local_flags[th_id])
@@ -43,7 +45,7 @@ template <int N> struct barrier {
 	void operator() (void) { wait (); }
 };
 template <int N> std::atomic<int> barrier<N>::next_uid{0};
-template <int N> thread_local int barrier<N>::uid = barrier<N>::new_uid ();
+template <int N> thread_local int barrier<N>::uid = -1;
 
 struct spin_lock {
 	std::atomic<bool> taken{false};

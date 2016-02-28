@@ -9,10 +9,15 @@ Allocator:
 	- separate in spb_h and spb types
 
 - virtual mapping overhaul (low priority)
+	- ranges
 	- class that implements setup/map/destroy/cleanup
 	- eager (current) version, setup/cleanup=null, map/destroy=mmap/munmap
 	- lazy version, setup/cleanup=mmap/munmap gas, map=null, destroy=discard ?
 	- beware of Bootstrap::Allocator
+
+- superpage tracker X virtual mapping
+	- fix possible data race
+		- introduce "ongoing_modification" flag ?
 
 - atomic get_containing_block
 	- relaxed ?
@@ -37,11 +42,8 @@ Structure:
 - Put network in ccp file ?
 - C-ify interface... hard
 
-It would be nice to dynamically join the GAS:
-- connect to anyone at startup, and get an unused Id (up to a limit ?)
-- needs a reconfigurable Givy::Allocator:
-	- allocate from node "-1" until node_id has been got
-	- hopefully only internal structures (node local) have been allocated
-	- prevent any sharing from area -1
-	- switch to area N afterwards, and remove any area -1 block from active lists
-
+GAS startup status:
+- At program startup, currently uses malloc/free (non GAS)
+	- move to using map_anywhere to allocate spb. will need tlh flushing when switching to GAS mode
+- After start of GAS mode, allocates from allocator itself
+	- non gas ptrs are still freed with free()

@@ -5,11 +5,13 @@
 #include <atomic>
 #include <algorithm>
 
+
 #include "reporting.h"
 #include "array.h"
 #include "types.h"
 #include "intrusive_list.h"
-#include "superpage_tracker.h"
+#include "system.h"
+#include "gas_space.h"
 #include "allocator_bootstrap.h"
 #include "allocator_defs.h"
 #include "allocator_page_block_manager.h"
@@ -25,7 +27,7 @@ namespace Allocator {
 	struct UnusedBlock;
 	struct PageBlockHeader;
 	class SuperpageBlock;
-	struct MainHeap;
+	class MainHeap;
 	class ThreadLocalHeap;
 
 	/* Lists types typedef
@@ -34,6 +36,7 @@ namespace Allocator {
 	using ThreadRemoteFreeList = BlockFreeList::Atomic;
 	using PageBlockUnusedList = Intrusive::QuickList<PageBlockHeader, 10>;
 	using SuperpageBlockOwnedList = Intrusive::List<SuperpageBlock>;
+	using ThreadLocalHeapList = Intrusive::List<ThreadLocalHeap>;
 
 	class UnusedBlock : public BlockFreeList::Element {
 		/* This type represents a block of memory that is unused by the user.
@@ -111,7 +114,7 @@ namespace Allocator {
 
 		constexpr auto config = static_array_from_generator<nb_sizeclass> (make_info);
 
-		static constexpr size_t get_nb_blocks (const Info & info) { return info.nb_blocks; }
+		constexpr size_t get_nb_blocks (const Info & info) { return info.nb_blocks; }
 		constexpr size_t max_nb_blocks = static_array_max (static_array_map (config, get_nb_blocks));
 
 		/* Sizeclass specific page block lists.
@@ -149,7 +152,7 @@ namespace Allocator {
 	public:
 		/* Represent page block layout ; will be set by format()
 		 */
-		MemoryType type;                          // Type of page block
+		MemoryType type;                            // Type of page block
 		BoundUint<VMem::superpage_page_nb> nb_page; // Size of page block
 		PageBlockHeader * head; // pointer to active header representing the page block
 
@@ -287,17 +290,29 @@ namespace Allocator {
 		constexpr size_t medium_high = SuperpageBlock::available_pages * VMem::page_size;
 	}
 
-	struct MainHeap {
+	class MainHeap {
+	private:
 		/* Central heap class.
-		 * Mainly hosts the superpage_tracker, and is responsible for SPB creation and destruction.
+		 * TODO descr
 		 */
-		const GasLayout layout;
-		SuperpageTracker<Bootstrap> & superpage_tracker;
+		ThreadLocalHeapList::Atomic tlh_list;
+		Gas::Space * space{nullptr};
 
+	public:
 		/* Creation / destruction
 		 */
-		explicit MainHeap (const GasLayout & layout_);
+		MainHeap ();
 		~MainHeap ();
+
+		// TLH registration
+		void register_tlh (ThreadLocalHeap & tlh);
+		void unregister_tlh (ThreadLocalHeap & tlh);
+
+		/* Gas mode.
+		 */
+		void enable_gas (Gas::Space & space_);
+		bool gas_enabled (void) const;
+		const Gas::Space & gas_space (void) const;
 
 		/* SuperpageBlock management
 		 * - creation / destruction
@@ -313,7 +328,7 @@ namespace Allocator {
 #endif
 	};
 
-	class ThreadLocalHeap {
+	class ThreadLocalHeap : public ThreadLocalHeapList::Element {
 		/* Thread (almost) private heap.
 		 * This class designed to be used as a threal_local variable.
 		 * One instance should be created for each thread, and destroyed when not needed anymore (thread
@@ -324,6 +339,9 @@ namespace Allocator {
 		 *
 		 * Thread remote frees are managed by pushing them on the remote_freed_blocks list of the owner
 		 * ThreadLocalHeap.
+		 *
+		 * TODO notify system : atomic_bool to trigger process_thread_remote_frees, and
+		 * switch-from-local-to-gas-mode cleanup
 		 */
 	private:
 		MainHeap & main_heap;
@@ -643,16 +661,29 @@ namespace Allocator {
 
 	/* ---------------------------- MainHeap IMPL --------------------------------- */
 
-	MainHeap::MainHeap (const GasLayout & layout_)
-	    : layout (layout_),
-	      bootstrap_allocator (layout.start),
-	      superpage_tracker (layout, bootstrap_allocator) {
-		DEBUG_TEXT ("MainHeap()\n");
-	}
+	MainHeap::MainHeap () { DEBUG_TEXT ("MainHeap()\n"); }
 	MainHeap::~MainHeap () { DEBUG_TEXT ("~MainHeap()\n"); }
+
+	void MainHeap::register_tlh (ThreadLocalHeap & tlh) { tlh_list.push_back (tlh); }
+
+	void MainHeap::unregister_tlh (ThreadLocalHeap & tlh) { tlh_list.remove (tlh); }
+
+	void MainHeap::enable_gas (Gas::Space & space_) {
+		ASSERT_SAFE (!gas_enabled ());
+		space = &space_;
+	}
+
+	bool MainHeap::gas_enabled (void) const { return space != nullptr; }
+
+	const Gas::Space & MainHeap::gas_space (void) const {
+		ASSERT_SAFE (gas_enabled ());
+		return *space;
+	}
 
 	SuperpageBlock & MainHeap::create_superpage_block (ThreadLocalHeap * owner,
 	                                                   size_t huge_alloc_size) {
+		ASSERT_SAFE (gas_enabled ());
+
 		/* Compute sizes
 		 * If huge_alloc_size is 0, allocates just one superpage
 		 */
@@ -660,54 +691,47 @@ namespace Allocator {
 		size_t superpage_nb = Math::divide_up (huge_alloc_page_nb + SuperpageBlock::header_space_pages,
 		                                       VMem::superpage_page_nb);
 		// Reserve, map, configure
-		Ptr spb_start = layout.superpage (superpage_tracker.acquire (superpage_nb));
-		VMem::map_checked (spb_start, superpage_nb * VMem::superpage_size);
-		return *new (spb_start) SuperpageBlock (superpage_nb, huge_alloc_page_nb, owner);
+		auto base = space->reserve_local_superpage_sequence (superpage_nb);
+		return *new (base) SuperpageBlock (superpage_nb, huge_alloc_page_nb, owner);
 	}
 
 	void MainHeap::destroy_superpage_block (SuperpageBlock & spb) {
-		Ptr spb_start = spb.ptr ();
+		ASSERT_SAFE (gas_enabled ());
+		auto base = spb.ptr ();
+		auto size = spb.size ();
 		spb.~SuperpageBlock (); // manual call due to placement new construction
-		superpage_tracker.release (layout.superpage_num (spb_start), spb.size ());
-		VMem::unmap_checked (spb_start, spb.size () * VMem::superpage_size);
+		space->release_superpage_sequence (base, size);
 	}
 
 	void MainHeap::destroy_superpage_huge_alloc (SuperpageBlock & spb) {
+		ASSERT_SAFE (gas_enabled ());
 		DEBUG_TEXT ("[%p] SuperpageBlock trim (%zu->1)\n", spb.ptr ().as<void *> (), spb.size ());
-		// Destroy the trailing superpages
-		size_t spb_size = spb.size ();
-		ASSERT_STD (spb_size > 1);
-		Ptr spb_start = spb.ptr ();
-		superpage_tracker.trim (layout.superpage_num (spb_start), spb_size);
-		VMem::unmap_checked (spb_start + VMem::superpage_size, (spb_size - 1) * VMem::superpage_size);
+
+		auto base = spb.ptr ();
+		auto size = spb.size ();
+		ASSERT_STD (size > 1);
 
 		// Update SPB header
 		spb.destroy_huge_alloc ();
+
+		// Destroy the trailing superpages
+		space->trim_superpage_sequence (base, size);
 	}
 
 	SuperpageBlock & MainHeap::containing_superpage_block (Ptr inside) const {
-		return *superpage_tracker.get_block_start (inside).as<SuperpageBlock *> ();
+		return *gas_space ().superpage_sequence_start (inside).as<SuperpageBlock *> ();
 	}
 
 #ifdef ASSERT_SAFE_ENABLED
 	void MainHeap::print (void) const {
-		printf ("Layout:\n");
-		printf ("\tnodes (local node): %zu (%zu)\n", layout.nb_node, layout.local_node);
-		printf ("\tsuperpage by node (total): %zu (%zu)\n", layout.superpage_by_node,
-		        layout.superpage_total);
-		printf ("\tnode area limits (sp index): [0");
-		for (auto n : range (layout.nb_node))
-			printf (",%zu", layout.node_area_end_superpage_num (n));
-		printf ("]\n");
-
-		printf ("SuperpageTracker:\n");
-		superpage_tracker.print ();
+		// TODO
 	}
 #endif
 
 	/* ---------------------------- ThreadLocalHeap IMPL -------------------------- */
 
 	ThreadLocalHeap::ThreadLocalHeap (MainHeap & main_heap_) : main_heap (main_heap_) {
+		main_heap.register_tlh (*this);
 		DEBUG_TEXT ("[%p]ThreadLocalHeap()\n", this);
 	}
 
@@ -728,10 +752,17 @@ namespace Allocator {
 
 			spb.disown ();
 		}
+
+		main_heap.unregister_tlh (*this);
 	}
 
 	Block ThreadLocalHeap::allocate (size_t size, size_t align) {
 		process_thread_remote_frees ();
+
+		if (!main_heap.gas_enabled ()) {
+			return {Ptr (malloc (size)), size};
+			// TODO better default mode
+		}
 
 		/* Alignment support.
 		 * Small allocations are aligned to the size of the sizeclass.
@@ -760,7 +791,14 @@ namespace Allocator {
 	void ThreadLocalHeap::deallocate (Ptr ptr) {
 		process_thread_remote_frees ();
 
-		if (!main_heap.layout.in_local_area (ptr))
+		if (!main_heap.gas_enabled () || !main_heap.gas_space ().in_gas (ptr)) {
+			// use basic free if allocation before gas mode
+			free (ptr);
+			return;
+			// TODO better default mode
+		}
+
+		if (!main_heap.gas_space ().in_local_interval (ptr))
 			return; // TODO node_remote free
 
 		SuperpageBlock & spb = main_heap.containing_superpage_block (ptr);
@@ -920,21 +958,23 @@ namespace Allocator {
 		}
 
 		printf ("====== ThreadLocalHeap [%p] ======\n", this);
-		printf ("Owned SuperpageBlocks:\n");
-		for (auto & spb : owned_superpage_blocks) {
-			printf ("[%zu]", main_heap.layout.superpage_num (spb.ptr ()));
-			spb.print ();
-		}
-
-		printf ("SizeClass lists:\n");
-		for (size_t i = 0; i < SizeClass::nb_sizeclass; ++i) {
-			printf ("[%zu,bs=%zu]", i, SizeClass::config[i].block_size);
-			for (auto & pbh : active_small_page_blocks[i]) {
-				auto & spb = SuperpageBlock::from_pbh (pbh);
-				printf (" (%zu,%zu)", main_heap.layout.superpage_num (spb.ptr ()),
-				        spb.page_block_index (pbh));
+		if (main_heap.gas_enabled ()) {
+			printf ("Owned SuperpageBlocks:\n");
+			for (auto & spb : owned_superpage_blocks) {
+				printf ("[%zu]", main_heap.gas_space ().superpage_num (spb.ptr ()));
+				spb.print ();
 			}
-			printf ("\n");
+
+			printf ("SizeClass lists:\n");
+			for (size_t i = 0; i < SizeClass::nb_sizeclass; ++i) {
+				printf ("[%zu,bs=%zu]", i, SizeClass::config[i].block_size);
+				for (auto & pbh : active_small_page_blocks[i]) {
+					auto & spb = SuperpageBlock::from_pbh (pbh);
+					printf (" (%zu,%zu)", main_heap.gas_space ().superpage_num (spb.ptr ()),
+					        spb.page_block_index (pbh));
+				}
+				printf ("\n");
+			}
 		}
 	}
 #endif

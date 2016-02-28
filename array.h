@@ -3,6 +3,7 @@
 
 #include <array>
 #include <utility>
+#include <algorithm>
 #include <type_traits>
 
 #include "pointer.h"
@@ -19,7 +20,7 @@ template <typename T, size_t N> using StaticArray = std::array<T, N>;
 template <typename Func, size_t... I>
 constexpr StaticArray<std::decay_t<std::result_of_t<Func (size_t)>>, sizeof...(I)>
 static_array_from_generator_aux (Func && f, std::index_sequence<I...>) {
-	return {std::forward<Func> (f) (I)...};
+	return {f (I)...};
 }
 template <size_t N, typename Func>
 constexpr decltype (auto) static_array_from_generator (Func && f) {
@@ -32,7 +33,7 @@ template <typename T, typename Func, size_t... I>
 constexpr StaticArray<std::decay_t<std::result_of_t<Func (T)>>, sizeof...(I)>
 static_array_map_aux (const StaticArray<T, sizeof...(I)> & a, Func && f,
                       std::index_sequence<I...>) {
-	return {std::forward<Func> (f) (std::get<I> (a))...};
+	return {f (std::get<I> (a))...};
 }
 template <typename T, size_t N, typename Func>
 constexpr decltype (auto) static_array_map (const StaticArray<T, N> & a, Func && f) {
@@ -67,7 +68,7 @@ public:
 	FixedArray (size_t size_, Alloc & allocator_, Args &&... args)
 	    : allocator (allocator_), length (size_) {
 		// Allocate
-		ASSERT_SAFE (size_ > 0);
+		ASSERT_SAFE (length > 0);
 		memory = allocator.allocate (length * sizeof (T), alignof (T));
 		ASSERT_SAFE (memory.ptr != nullptr);
 

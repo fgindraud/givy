@@ -3,10 +3,11 @@
 
 #include <atomic>
 #include <tuple>
+#include <utility>
 
 #include "reporting.h"
+#include "range.h"
 #include "array.h"
-#include "gas_layout.h"
 #include "bitmask.h"
 
 namespace Givy {
@@ -33,38 +34,27 @@ private:
 	 * 	0: superpages after the first
 	 * 	1: first superpage of sequence
 	 */
-	const GasLayout & layout;
 	size_t table_size;
 	FixedArray<AtomicIntType, Alloc> mapping_table;
 	FixedArray<AtomicIntType, Alloc> sequence_table;
 
 public:
-	SuperpageTracker (const GasLayout & layout_, Alloc & allocator_);
+	SuperpageTracker (size_t superpage_nb, Alloc & allocator_);
 	// No copy/move due to FixedArray
 
 	/* Aquire/Release a superpage block, by superpage number.
 	 * Trim will reduce a superpage block to 1 superpage.
 	 */
-	size_t acquire (size_t superpage_nb);
-	void release (size_t superpage_num, size_t superpage_nb);
-	void trim (size_t superpage_num, size_t superpage_nb);
+	size_t acquire (size_t superpage_nb, const Range<size_t> & superpage_search_space);
+	void release (const Range<size_t> & superpage_sequence);
+	void trim (const Range<size_t> & superpage_sequence);
 
 	/* Get superpage block start
 	 */
-	size_t get_block_start_num (size_t superpage_num) const;
-	Ptr get_block_start (Ptr inside_block) const {
-		return layout.superpage (get_block_start_num (layout.superpage_num (inside_block)));
-	}
-
-	bool is_mapped (size_t superpage_num) const {
-		auto loc = Index (superpage_num);
-		IntType c = mapping_table[loc.array_idx].load (std::memory_order_seq_cst);
-		return BitArray::is_set (c, loc.bit_idx);
-	}
-	bool is_mapped (Ptr ptr) const { return is_mapped (layout.superpage_num (ptr)); }
+	size_t get_sequence_start_num (size_t superpage_num) const;
 
 #ifdef ASSERT_SAFE_ENABLED
-	void print (int superpage_by_line = 200) const;
+	void print (size_t nb_node, size_t superpage_by_node, int superpage_by_line = 200) const;
 #endif
 
 private:
@@ -117,13 +107,14 @@ private:
 };
 
 template <typename Alloc>
-inline SuperpageTracker<Alloc>::SuperpageTracker (const GasLayout & layout_, Alloc & allocator_)
-    : layout (layout_),
-      table_size (Math::divide_up (layout.superpage_total, BitArray::bits)),
+inline SuperpageTracker<Alloc>::SuperpageTracker (size_t superpage_nb, Alloc & allocator_)
+    : table_size (Math::divide_up (superpage_nb, BitArray::bits)),
       mapping_table (table_size, allocator_, BitArray::zeros ()),
       sequence_table (table_size, allocator_, BitArray::zeros ()) {}
 
-template <typename Alloc> inline size_t SuperpageTracker<Alloc>::acquire (size_t superpage_nb) {
+template <typename Alloc>
+inline size_t SuperpageTracker<Alloc>::acquire (size_t superpage_nb,
+                                                const Range<size_t> & superpage_search_space) {
 	/* I need to find a sequence of superpage_nb consecutive 0s anywhere in the table.
 	 * For now, I perform a linear search of the table, with some optimisation to prevent
 	 * using an atomic load twice on the same integer array cell if possible.
@@ -134,8 +125,8 @@ template <typename Alloc> inline size_t SuperpageTracker<Alloc>::acquire (size_t
 	 */
 	ASSERT_SAFE (superpage_nb > 0);
 
-	auto search_at = Index (layout.local_area_start_superpage_num ());
-	auto search_end = Index (layout.local_area_end_superpage_num ());
+	auto search_at = Index (superpage_search_space.first ());
+	auto search_end = Index (superpage_search_space.last ());
 	IntType c;
 	while (search_at < search_end) {
 		c = mapping_table[search_at.array_idx].load (std::memory_order_seq_cst);
@@ -216,28 +207,28 @@ template <typename Alloc> inline size_t SuperpageTracker<Alloc>::acquire (size_t
 }
 
 template <typename Alloc>
-inline void SuperpageTracker<Alloc>::release (size_t superpage_num, size_t superpage_nb) {
+inline void SuperpageTracker<Alloc>::release (const Range<size_t> & superpage_sequence) {
 	/* Just clear the bits in the two tables.
 	 */
-	auto loc_start = Index (superpage_num);
-	auto loc_end = Index (superpage_num + superpage_nb);
+	auto loc_start = Index (superpage_sequence.first ());
+	auto loc_end = Index (superpage_sequence.last ());
 	ASSERT_SAFE (loc_end.array_idx < table_size);
 	clear_bits (loc_start, loc_end);
 }
 
 template <typename Alloc>
-inline void SuperpageTracker<Alloc>::trim (size_t superpage_num, size_t superpage_nb) {
+inline void SuperpageTracker<Alloc>::trim (const Range<size_t> & superpage_sequence) {
 	/* Just clear the bits in the two tables.
 	 */
-	ASSERT_SAFE (superpage_nb > 1);
-	auto loc_start = Index (superpage_num);
-	auto loc_end = Index (superpage_num + superpage_nb);
+	ASSERT_SAFE (superpage_sequence.size () > 1);
+	auto loc_start = Index (superpage_sequence.first ());
+	auto loc_end = Index (superpage_sequence.last ());
 	ASSERT_SAFE (loc_end.array_idx < table_size);
 	trim_bits (loc_start, loc_end);
 }
 
 template <typename Alloc>
-inline size_t SuperpageTracker<Alloc>::get_block_start_num (size_t superpage_num) const {
+inline size_t SuperpageTracker<Alloc>::get_sequence_start_num (size_t superpage_num) const {
 	/* Find the first 0 in the sequence_table, looking backward from the starting position.
 	 * Note that it won't check if the superpages are in the mapped table.
 	 */
@@ -399,27 +390,29 @@ inline void SuperpageTracker<Alloc>::trim_bits (Index loc_start, Index loc_end) 
 }
 
 #ifdef ASSERT_SAFE_ENABLED
-template <typename Alloc> inline void SuperpageTracker<Alloc>::print (int superpage_by_line) const {
+template <typename Alloc>
+inline void SuperpageTracker<Alloc>::print (size_t nb_node, size_t superpage_by_node,
+                                            int superpage_by_line) const {
 	const int indicator_interval = 10;
 	const int line_prefix_size = 10;
 	ASSERT_SAFE (superpage_by_line > 0);
 
 	// Indicators
-	size_t nb_indicator = Math::divide_up (superpage_by_line, indicator_interval) + 1;
+	const auto nb_indicator = Math::divide_up (superpage_by_line, indicator_interval) + 1;
 	printf ("%*c", line_prefix_size, ' ');
-	for (size_t i = 0; i < nb_indicator; ++i)
-		printf ("%-*zu", indicator_interval, i * indicator_interval);
+	for (auto i = 0; i < nb_indicator; ++i)
+		printf ("%-*d", indicator_interval, i * indicator_interval);
 	printf ("\n%*c", line_prefix_size, ' ');
-	for (size_t i = 0; i < nb_indicator; ++i)
+	for (auto i = 0; i < nb_indicator; ++i)
 		printf ("/%*c", indicator_interval - 1, ' ');
 
 	// Data
 	IntType m = 0;
 	IntType s = 0;
-	for (auto node : range (layout.nb_node)) {
-		size_t start = layout.node_area_start_superpage_num (node);
-		for (size_t sp = start; sp < layout.node_area_end_superpage_num (node); ++sp) {
-			if ((sp - start) % superpage_by_line == 0)
+	for (auto node : range (nb_node)) {
+		auto sp_range = range_from_offset (superpage_by_node * node, superpage_by_node);
+		for (auto sp : sp_range) {
+			if ((sp - sp_range.first ()) % superpage_by_line == 0)
 				printf ("\n%-*zu", line_prefix_size, sp);
 
 			auto idx = Index (sp);

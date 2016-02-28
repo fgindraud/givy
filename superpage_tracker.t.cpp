@@ -17,51 +17,58 @@ struct SystemAlloc {
 
 int main (void) {
 	SystemAlloc alloc;
-	GasLayout layout (nullptr, 500 * VMem::superpage_size, 1, 0);
-	SuperpageTracker<SystemAlloc> tracker (layout, alloc);
+	const size_t nb_node = 3;
+	const size_t superpage_by_node = 200;
+	const auto local_range = range_from_offset (superpage_by_node, superpage_by_node);
+	SuperpageTracker<SystemAlloc> tracker (superpage_by_node * nb_node, alloc);
+
+	auto acq = [&] (size_t n) { return tracker.acquire (n, local_range); };
+	auto trim = [&] (auto && r) { tracker.trim (r); };
+	auto rel = [&] (auto && r) { tracker.release (r); };
+	auto print = [&] (void) { tracker.print (nb_node, superpage_by_node); };
 
 	sep ();
 	{
 		// Check layouts
 		printf ("Mixed sized allocs\n");
-		size_t s1 = tracker.acquire (10);
-		size_t s2 = tracker.acquire (20);
-		size_t s3 = tracker.acquire (70);
-		tracker.print ();
+		size_t s1 = acq (10);
+		size_t s2 = acq (20);
+		size_t s3 = acq (70);
+		print ();
 		printf ("%zu %zu %zu\n", s1, s2, s3);
 
 		printf ("Partial deallocation\n");
-		tracker.release (s2, 20);
-		tracker.release (s1, 10);
-		tracker.print ();
+		rel (range_from_offset (s2, 20));
+		rel (range_from_offset (s1, 10));
+		print ();
 
 		// Check allocation in fragmented area
 		printf ("Mixed alloc ; will fragment\n");
-		size_t s4 = tracker.acquire (15);
-		size_t s5 = tracker.acquire (20);
-		size_t s6 = tracker.acquire (10);
-		size_t s7 = tracker.acquire (2);
-		tracker.print ();
+		size_t s4 = acq (15);
+		size_t s5 = acq (20);
+		size_t s6 = acq (10);
+		size_t s7 = acq (2);
+		print ();
 		printf ("%zu %zu %zu %zu\n", s4, s5, s6, s7);
 
 		// Check results of header finding
 		for (size_t s = 0; s < 100; s += 10)
-			printf ("Header of %zu = %zu\n", s, tracker.get_block_start_num (s));
+			printf ("Header of %zu = %zu\n", s, tracker.get_sequence_start_num (s));
 
 		// Test trimming
 		printf ("Trimming\n");
-		tracker.trim (s7, 2);
-		tracker.trim (s5, 20);
-		tracker.print ();
+		trim (range_from_offset (s7, 2));
+		trim (range_from_offset (s5, 20));
+		print ();
 
 		// Test clean deallocation
 		printf ("Deallocation\n");
-		tracker.release (s3, 70);
-		tracker.release (s4, 15);
-		tracker.release (s5, 1);
-		tracker.release (s6, 10);
-		tracker.release (s7, 1);
-		tracker.print ();
+		rel (range_from_offset (s3, 70));
+		rel (range_from_offset (s4, 15));
+		rel (range_from_offset (s5, 1));
+		rel (range_from_offset (s6, 10));
+		rel (range_from_offset (s7, 1));
+		print ();
 	}
 	sep ();
 	{
@@ -77,16 +84,16 @@ int main (void) {
 			threads[i] = std::thread ([&](int thid) {
 				wait ();
 				for (int j : range (nb_alloc))
-					allocs[thid][j] = tracker.acquire (10);
+					allocs[thid][j] = acq (10);
 				wait ();
 				wait ();
 				for (int j : range (nb_alloc))
-					tracker.release (allocs[thid][j], 10);
+					rel (range_from_offset (allocs[thid][j], 10));
 			}, i);
 
 		wait ();
 		wait ();
-		tracker.print ();
+		print ();
 		for (auto & ath : allocs) {
 			for (auto s : ath)
 				printf ("%zu ", s);
@@ -95,7 +102,7 @@ int main (void) {
 		wait ();
 		for (auto & th : threads)
 			th.join ();
-		tracker.print ();
+		print ();
 	}
 	sep ();
 

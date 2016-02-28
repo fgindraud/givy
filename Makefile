@@ -7,12 +7,12 @@ CPPFLAGS += -pthread
 LDFLAGS =
 
 # Debug
-#CPPFLAGS += -g -Og
+CPPFLAGS += -g -Og
 
 TESTS_CPP = $(wildcard *.t.cpp)
 TESTS_EXEC = $(TESTS_CPP:%.t.cpp=test_%)
 
-all: $(TESTS_EXEC) givy name_server
+all: $(TESTS_EXEC) givy
 
 test_%: %.t.cpp $(wildcard *.h)
 	g++ $(CPPFLAGS) -o $@ $< $(LDFLAGS)
@@ -21,15 +21,9 @@ test_%: %.t.cpp $(wildcard *.h)
 givy: CPPFLAGS += -DASSERT_LEVEL_NONE
 givy: CPPFLAGS += -ffunction-sections
 givy: LDFLAGS += -Wl,--gc-sections
-givy: LDFLAGS += -lcci
 givy: main.cpp givy.cpp $(wildcard *.h)
 	g++ $(CPPFLAGS) -o $@ main.cpp givy.cpp $(LDFLAGS)
 
-# Registering server
-name_server: LDFLAGS += -lcci
-name_server: name_server.cpp $(wildcard *.h)
-	g++ $(CPPFLAGS) -o $@ $< $(LDFLAGS)
-
 clean:
-	$(RM) $(TESTS_EXEC) givy name_server
+	$(RM) $(TESTS_EXEC) givy
 
