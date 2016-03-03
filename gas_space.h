@@ -11,7 +11,6 @@
 #include "superpage_tracker.h"
 #include "allocator_bootstrap.h"
 
-
 namespace Givy {
 namespace Gas {
 	class Space {

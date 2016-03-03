@@ -7,25 +7,25 @@ namespace {
 using namespace Givy;
 
 Allocator::Bootstrap boostrap_allocator;
-Allocator::MainHeap main_heap;
-thread_local Allocator::ThreadLocalHeap thread_heap{main_heap};
+thread_local Allocator::ThreadLocalHeap thread_heap;
 Gas::Space space{Ptr (0x4000'0000'0000),     // start
                  100 * VMem::superpage_size, // space_by_node
                  4,                          // nb_node
                  0,                          // local node
                  boostrap_allocator};
 
-void init (void) {
-	main_heap.enable_gas (space);
-}
 Block allocate (size_t size, size_t align) {
-	return thread_heap.allocate (size, align);
+	return thread_heap.allocate (size, align, space);
 }
 void deallocate (Block blk) {
-	thread_heap.deallocate (blk);
+	thread_heap.deallocate (blk, space);
 }
-void print (bool print_main_heap = true) {
-	thread_heap.print (print_main_heap);
+void print (bool print_space = true) {
+	if (print_space) {
+		printf ("========== Space ===========\n");
+		space.print ();
+	}
+	thread_heap.print (space);
 }
 }
 
@@ -39,7 +39,6 @@ void show (const char * title, bool b = false) {
 }
 
 int main (void) {
-	init ();
 #if DETERMINISTIC_SMALL_TEST
 	{
 		Givy::Allocator::SizeClass::print ();

@@ -39,8 +39,8 @@ Coherence:
 
 Structure:
 - Keep most code in header (especially template stuff, like allocator)
+- Finish to inline everything (for safety if using multiple cpp)
 - Put network in ccp file ?
-- C-ify interface... hard
 
 GAS startup status:
 - At program startup, currently uses malloc/free (non GAS)

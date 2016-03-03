@@ -48,8 +48,8 @@ public:
 	}
 	void destruct (void) { stored.~T (); }
 
-	T & value (void) { return stored; }
-	const T & value (void) const { return stored; }
+	T & object (void) { return stored; }
+	const T & object (void) const { return stored; }
 };
 
 /* Optional : manually constructed object, with boolean to track state.
@@ -57,35 +57,41 @@ public:
 template <typename T> class Optional {
 private:
 	bool constructed{false};
-	ManualConstruct<T> object;
+	ManualConstruct<T> storage;
 
 public:
 	Optional () = default;
 	~Optional () {
 		if (constructed)
-			object.destruct ();
+			storage.destruct ();
 	}
 
 	template <typename... Args> void construct (Args &&... args) {
 		ASSERT_SAFE (!constructed);
-		object.construct (std::forward<Args> (args)...);
+		storage.construct (std::forward<Args> (args)...);
 		constructed = true;
 	}
 	void destruct (void) {
 		ASSERT_SAFE (constructed);
-		object.destruct ();
+		storage.destruct ();
 		constructed = false;
 	}
-	bool is_constructed (void) const { return constructed; }
 
-	T & value (void) {
+	bool is_constructed (void) const { return constructed; }
+	operator bool (void) const { return is_constructed (); }
+
+	T & object (void) {
 		ASSERT_SAFE (constructed);
-		return object.value ();
+		return storage.object ();
 	}
-	const T & value (void) const {
+	const T & object (void) const {
 		ASSERT_SAFE (constructed);
-		return object.value ();
+		return storage.object ();
 	}
+	T & operator*(void) { return object (); }
+	const T & operator*(void) const { return object (); }
+	T * operator->(void) { return &object (); }
+	const T * operator->(void) const { return &object (); }
 };
 }
 

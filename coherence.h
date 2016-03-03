@@ -2,25 +2,25 @@
 #define COHERENCE_H
 
 #include <bitset>
+#include <map>
 
 #include "types.h"
 #include "pointer.h"
+#include "network.h"
 
 namespace Givy {
 namespace Coherence {
 
-	namespace {
-		constexpr size_t MaxSupportedNode = 64;
-	}
+	constexpr size_t max_supported_node = 64;
 
 	struct RegionMetadata {
 		Ptr ptr;
-		std::bitset<MaxSupportedNode> valid_set; // For owner only
-		BoundUint<MaxSupportedNode> owner;
+		std::bitset<max_supported_node> valid_set; // For owner only
+		BoundUint<max_supported_node> owner;
 		bool valid;
 	};
 
-	/* Coherence messages
+	/* Coherence messages.
 	 */
 	enum class MessageType : uint8_t {
 		DataRequest,
@@ -31,33 +31,36 @@ namespace Coherence {
 		InvalidationAck
 	};
 
-	struct DataRequestMsg {
-		MessageType type; // Must be DataRequest
-	};
-	struct DataAnswerMsg {
-		MessageType type; // Must be DataAnswer
-	};
-	struct OwnerRequestMsg {
-		MessageType type; // Must be OwnerRequest
-	};
-	struct OwnerTransferMsg {
-		MessageType type; // Must be OwnerTransfer
-	};
-	struct InvalidationRequestMsg {
-		MessageType type; // Must be InvalidationRequest
-	};
-	struct InvalidationAckMsg {
-		MessageType type; // Must be InvalidationAck
+	struct DataRequestMsg {};
+	struct DataAnswerMsg {};
+	struct OwnerRequestMsg {};
+	struct OwnerTransferMsg {};
+	struct InvalidationRequestMsg {};
+	struct InvalidationAckMsg {};
+
+	struct Message {
+		MessageType type;
+		union {
+			DataRequestMsg data_request;
+			DataAnswerMsg data_answer;
+			OwnerRequestMsg owner_request;
+			OwnerTransferMsg owner_transfer;
+			InvalidationRequestMsg invalidation_request;
+			InvalidationAckMsg invalidation_ack;
+		};
 	};
 
-	union Message {
-		MessageType type;
-		DataRequestMsg data_request;
-		DataAnswerMsg data_answer;
-		OwnerRequestMsg owner_request;
-		OwnerTransferMsg owner_transfer;
-		InvalidationRequestMsg invalidation_request;
-		InvalidationAckMsg invalidation_ack;
+	class Manager {
+	private:
+		Network & network;
+		std::map<Ptr, RegionMetadata> regions;
+
+	public:
+		Manager (Network & network_) : network (network_) {}
+
+		void event_loop (void) {
+
+		}
 	};
 }
 }
