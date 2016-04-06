@@ -57,8 +57,8 @@ namespace Intrusive {
 
 		public:
 			iterator_base () : iterator_base (nullptr) {}
-			bool operator==(iterator_base other) { return current == other.current; }
-			bool operator!=(iterator_base other) { return current != other.current; }
+			bool operator==(iterator_base other) const { return current == other.current; }
+			bool operator!=(iterator_base other) const { return current != other.current; }
 			iterator_base & operator++(void) {
 				current = current->next;
 				return *this;
@@ -68,8 +68,8 @@ namespace Intrusive {
 				++*this;
 				return cpy;
 			}
-			Type & operator*(void) { return *static_cast<Type *> (current); }
-			Type * operator->(void) { return static_cast<Type *> (current); }
+			Type & operator*(void) const { return *static_cast<Type *> (current); }
+			Type * operator->(void) const { return static_cast<Type *> (current); }
 		};
 		using iterator = iterator_base<T, Element>;
 		using const_iterator = iterator_base<const T, const Element>;

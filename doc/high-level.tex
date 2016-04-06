@@ -1,0 +1,81 @@
+\documentclass{standalone}
+
+\usepackage{tikz}
+\usetikzlibrary{fit,calc}
+\tikzset{
+-latex,
+Label/.style={fill=white,sloped,draw,rounded corners,font=\tiny}
+}
+
+\newcommand{\So}{$\Rightarrow$}
+\newcommand{\so}{$\rightarrow$}
+
+% properties:
+% for a region r, owner requests never in // with owner requests or read requests
+% node is owner of r <=> (NE and node is creator) || Owner flag
+
+\begin{document}
+\begin{tikzpicture}
+	%\draw[help lines] (0,0) grid (20,20);
+
+	\begin{scope}[every node/.style={
+	draw, thick, rounded corners, anchor=west, font=\huge,
+	minimum height=2cm, minimum width=25cm}]
+		\node (threads) at (0,0) {Threads};
+		\node (network) at (0,25) {Network};
+	\end{scope}
+
+	\begin{scope}[every node/.style={draw, thick, minimum width=3cm, minimum height=2cm}]
+		\node (metadata) at (5,15) {\begin{tabular}{c}
+			Metadata\\
+			\{NonExisting,Invalid,Valid,Owner\}
+		\end{tabular}};
+		\node (requestmap) at (15,15) {\begin{tabular}{c}
+			RequestMap\\
+			ptr\so waiter
+		\end{tabular}};
+		\node (allocator) at (5,5) {Allocator};
+		\node (mapper) at (15,5) {Mapper};
+		\node (waiter) at (22,10) {Waiter};
+	\end{scope}
+	
+	\begin{scope}[every node/.style={Label}]
+		
+		\begin{scope}[gray]
+			\draw (allocator) -- node {allocate/deallocate > aquire/release/trim} (mapper);
+			\draw ($(metadata.north west)+(right:1cm)$) to[loop,out=90,in=180,looseness=4] node{create if needed} ($(metadata.north west)+(down:1cm)$);
+		\end{scope}
+
+		\begin{scope}[red]
+			\coordinate (mallocFuncAnchor) at ($(allocator.south west)+(right:5mm)$);
+			\coordinate (mallocRetAnchor) at ($(mallocFuncAnchor)+(right:5mm)$);
+			\draw ($(threads.north west)!(mallocFuncAnchor)!(threads.north east)$) -- node {malloc \So allocate} (mallocFuncAnchor);
+			\draw (mallocRetAnchor) -- ($(threads.north west)!(mallocRetAnchor)!(threads.north east)$);
+		\end{scope}
+
+% 		\begin{scope}[orange]%TODO
+% 			\coordinate (freeFuncAnchor) at ($(threads.north west)!(mallocFuncAnchor)!(threads.north east)+(left:1cm)$);
+% 			\draw (freeFuncAnchor) to[out=up,in=down] node {free \So status ?} (metadata.south);
+% 			\draw (metadata) -- node {deallocate} (allocator);
+% 			\draw (metadata) -- node {FreeMsg to everyone} (network);
+% 		\end{scope}
+		
+		\begin{scope}[green]
+			\draw ($(threads.north west)+(right:1cm)$) to[out=up,in=down] node {read \So status ?} ($(metadata.south west)+(right:1cm)$);
+			\draw ($(metadata.south west)+(right:1.5cm)$) to[out=down,in=up] node {NE local or V or O \So continue} ($(threads.north west)+(right:1.5cm)$);
+			\draw ($(metadata.north east)+(down:0.5cm)$) -- node {NE remote or I \So create MD, add\_request} ($(requestmap.north west)+(down:0.5cm)$);
+			\draw (requestmap) -- node {if was first request of reg \So send DataReq} (network);
+
+			\draw[dashed] ($(threads.north west)!(waiter.south)!(threads.north east)$) -- node {provides} (waiter.south);
+			\draw[dashed] (waiter) -- node {added to} (requestmap);
+		\end{scope}
+		
+		\begin{scope}[teal]
+			\coordinate (datareqRecv) at ($(metadata.north west)+(right:1.5cm)$);
+			\draw ($(network.south west)!(datareqRecv)!(network.south east)$) -- node {DataReq \So status ?} (datareqRecv);
+		\end{scope}
+
+	\end{scope}
+
+\end{tikzpicture}
+\end{document}

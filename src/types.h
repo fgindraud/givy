@@ -26,9 +26,9 @@ template <size_t MaxValue>
 using BoundUint = typename Detail::UintSelector<Math::representation_bits (MaxValue)>::Type;
 
 /* Class container, to allow manual build/destruction.
- * Doesn't check for anything, so unsafe.
+ * Doesn't track built state.
  */
-template <typename T> class ManualConstruct {
+template <typename T> class Constructible {
 private:
 	union {
 		// Using union to have uninitialized class
@@ -36,12 +36,12 @@ private:
 	};
 
 public:
-	ManualConstruct () {}
-	ManualConstruct (const ManualConstruct &) = delete;
-	ManualConstruct (ManualConstruct &&) = delete;
-	ManualConstruct & operator=(const ManualConstruct &) = delete;
-	ManualConstruct & operator=(ManualConstruct &&) = delete;
-	~ManualConstruct () {}
+	Constructible () {}
+	Constructible (const Constructible &) = delete;
+	Constructible (Constructible &&) = delete;
+	Constructible & operator=(const Constructible &) = delete;
+	Constructible & operator=(Constructible &&) = delete;
+	~Constructible () {}
 
 	template <typename... Args> void construct (Args &&... args) {
 		::new (&stored) T (std::forward<Args> (args)...);
@@ -50,44 +50,6 @@ public:
 
 	T & object (void) { return stored; }
 	const T & object (void) const { return stored; }
-};
-
-/* Optional : manually constructed object, with boolean to track state.
- */
-template <typename T> class Optional {
-private:
-	bool constructed{false};
-	ManualConstruct<T> storage;
-
-public:
-	Optional () = default;
-	~Optional () {
-		if (constructed)
-			storage.destruct ();
-	}
-
-	template <typename... Args> void construct (Args &&... args) {
-		ASSERT_SAFE (!constructed);
-		storage.construct (std::forward<Args> (args)...);
-		constructed = true;
-	}
-	void destruct (void) {
-		ASSERT_SAFE (constructed);
-		storage.destruct ();
-		constructed = false;
-	}
-
-	bool is_constructed (void) const { return constructed; }
-	operator bool (void) const { return is_constructed (); }
-
-	T & object (void) {
-		ASSERT_SAFE (constructed);
-		return storage.object ();
-	}
-	const T & object (void) const {
-		ASSERT_SAFE (constructed);
-		return storage.object ();
-	}
 	T & operator*(void) { return object (); }
 	const T & operator*(void) const { return object (); }
 	T * operator->(void) { return &object (); }

@@ -5,6 +5,7 @@
 #include <cstddef> // size_t std::nullptr_t
 
 #include "math.h"
+#include "reporting.h"
 
 namespace Givy {
 
@@ -22,6 +23,10 @@ struct Ptr {
 
 	template <typename T> T as (void) const { return reinterpret_cast<T> (p); }
 	template <typename T> operator T *(void) const { return as<T *> (); }
+	template <typename T> T & as_ref (void) const {
+		ASSERT_SAFE (p != 0);
+		return *as<T *> ();
+	}
 
 	Ptr add (size_t off) const { return Ptr (p + off); }
 	Ptr sub (size_t off) const { return Ptr (p - off); }

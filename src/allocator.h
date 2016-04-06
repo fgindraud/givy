@@ -470,7 +470,7 @@ namespace Allocator {
 
 	SuperpageBlock & SuperpageBlock::from_pointer_in_first_superpage (Ptr inside) {
 		// Just use alignement
-		return *inside.align (VMem::superpage_size).as<SuperpageBlock *> ();
+		return inside.align (VMem::superpage_size).as_ref<SuperpageBlock> ();
 	}
 	SuperpageBlock & SuperpageBlock::from_pbh (PageBlockHeader & pbh) {
 		// Pbh are stored in first superpage
@@ -682,7 +682,7 @@ namespace Allocator {
 	void ThreadLocalHeap::deallocate (Ptr ptr, Gas::Space & space) {
 		process_thread_remote_frees (space);
 
-		SuperpageBlock & spb = *space.superpage_sequence_start (ptr).as<SuperpageBlock *> ();
+		auto & spb = space.superpage_sequence_start (ptr).as_ref<SuperpageBlock> ();
 		ThreadLocalHeap * owner = spb.get_owner ();
 
 		/* Adopt orphan superpage block.

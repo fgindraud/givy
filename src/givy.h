@@ -11,8 +11,13 @@ void init (int & argc, char **& argv);
 /* Allocator interface
  */
 Block allocate (size_t size, size_t align);
-void deallocate (Block blk);
 void deallocate (Ptr ptr);
+
+/* Coherence interface
+ */
+void require_read_only (Ptr ptr);
+void require_read_write (Ptr ptr);
+
 }
 
 #endif

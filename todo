@@ -40,10 +40,17 @@ Coherence:
 Structure:
 - Keep most code in header (especially template stuff, like allocator)
 - Finish to inline everything (for safety if using multiple cpp)
-- Put network in ccp file ?
-
-GAS startup status:
-- At program startup, currently uses malloc/free (non GAS)
+- structures defined in givy.cpp, and interlocked there
+- startup: 
 	- move to using map_anywhere to allocate spb. will need tlh flushing when switching to GAS mode
-- After start of GAS mode, allocates from allocator itself
-	- non gas ptrs are still freed with free()
+	- need to flush all TLHs from current memory -> use a notify system, make TLH register in a central heap.
+
+General code
+- Rework Ptr/Block usage... prefer more raw types ?
+- C-like interface (Ptr is internal... make Block a C struct)
+
+STATUS
+- startup:
+	- starts without gas mode ; allocate/deallocate use malloc/free directly
+	- when switching to gas mode, starts using real allocator. deallocate of non-gas objects still uses free()
+- assumes blocks metadata is never evicted
