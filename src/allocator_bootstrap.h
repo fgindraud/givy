@@ -2,7 +2,8 @@
 #define ALLOCATOR_BOOTSTRAP_H
 
 #include "reporting.h"
-#include "pointer.h"
+#include "block.h"
+#include "math.h"
 
 #include <cstdlib>
 
@@ -21,7 +22,7 @@ namespace Allocator {
 			int r = posix_memalign (&p, align, size);
 			(void) r;
 			ASSERT_SAFE (r == 0);
-			return {Ptr (p), size};
+			return {p, size};
 		}
 		void deallocate (Block blk) { free (blk.ptr); }
 	};

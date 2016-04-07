@@ -45,12 +45,16 @@ Structure:
 	- move to using map_anywhere to allocate spb. will need tlh flushing when switching to GAS mode
 	- need to flush all TLHs from current memory -> use a notify system, make TLH register in a central heap.
 
-General code
-- Rework Ptr/Block usage... prefer more raw types ?
-- C-like interface (Ptr is internal... make Block a C struct)
-
 STATUS
 - startup:
 	- starts without gas mode ; allocate/deallocate use malloc/free directly
 	- when switching to gas mode, starts using real allocator. deallocate of non-gas objects still uses free()
 - assumes blocks metadata is never evicted
+
+
+TODO next
+- example of sparse matrix multiply (threaded so not very interesting either)
+- remove requestmap
+- add waitingData and waitingOwner statuses
+- put waiters in a linked list, add head to metadata
+

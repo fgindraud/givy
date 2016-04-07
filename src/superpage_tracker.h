@@ -6,6 +6,7 @@
 #include <utility>
 
 #include "reporting.h"
+#include "math.h"
 #include "range.h"
 #include "array.h"
 #include "bitmask.h"

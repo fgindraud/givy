@@ -79,11 +79,11 @@ Block allocate (size_t size, size_t align) {
 	if (gas.inited) {
 		return thread.heap.allocate (size, align, gas.space.object ());
 	} else {
-		return {Ptr (malloc (size)), size};
+		return {malloc (size), size};
 	}
 }
 
-void deallocate (Ptr ptr) {
+void deallocate (void * ptr) {
 	if (!gas.inited || !gas.space->in_gas (ptr)) {
 		free (ptr);
 	} else {
@@ -91,12 +91,12 @@ void deallocate (Ptr ptr) {
 	}
 }
 
-void require_read_only (Ptr ptr) {
+void require_read_only (void * ptr) {
 	ASSERT_SAFE (gas.inited);
 	gas.coherence->request_region_valid (ptr);
 }
 
-void require_read_write (Ptr ptr) {
+void require_read_write (void * ptr) {
 }
 
 }

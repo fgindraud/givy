@@ -8,7 +8,7 @@
 #include <thread>
 
 #include "types.h"
-#include "pointer.h"
+#include "block.h"
 #include "network.h"
 #include "allocator.h"
 
@@ -23,7 +23,7 @@ namespace Coherence {
 		BoundUint<max_supported_node> owner;
 		bool valid;
 
-		static RegionMetadata invalid (Ptr ptr, const Gas::Space & space) {
+		static RegionMetadata invalid (void * ptr, const Gas::Space & space) {
 			return {{ptr, 0},
 			        {},
 			        static_cast<BoundUint<max_supported_node>> (space.node_of_allocation (ptr)),
@@ -89,7 +89,7 @@ namespace Coherence {
 		std::mutex mutex;
 
 		const Gas::Space & space;
-		std::map<Ptr, RegionMetadata> regions;
+		std::map<void *, RegionMetadata> regions;
 		/* metadata rationale:
 		 * - if regions is created locally and has never been shared: no metadata
 		 * - metadata is created at first need (DataReq / OwnerReq received)
@@ -97,7 +97,7 @@ namespace Coherence {
 		 */
 
 		Network & network;
-		std::multimap<Ptr, Waiter *> query_waiters;
+		std::multimap<void *, Waiter *> query_waiters;
 
 		std::thread thread;
 
@@ -108,7 +108,7 @@ namespace Coherence {
 
 		~Manager () { thread.join (); }
 
-		void request_region_valid (Ptr ptr) {
+		void request_region_valid (void * ptr) {
 			Waiter waiter;
 			{
 				std::lock_guard<std::mutex> lock (mutex);

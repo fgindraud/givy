@@ -10,7 +10,7 @@ LDFLAGS =
 #CPPFLAGS += -g -Og
 
 TESTS_CPP = $(wildcard *.t.cpp)
-TESTS_EXEC = #$(TESTS_CPP:%.t.cpp=test_%)
+TESTS_EXEC = $(TESTS_CPP:%.t.cpp=test_%)
 
 all: $(TESTS_EXEC) givy
 

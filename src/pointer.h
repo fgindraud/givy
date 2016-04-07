@@ -19,22 +19,19 @@ struct Ptr {
 	Ptr () = default; // Unitialized
 	Ptr (std::nullptr_t) : p (0) {}
 	explicit Ptr (uintptr_t ptr) : p (ptr) {}
-	template <typename T> explicit Ptr (T * ptr) : p (reinterpret_cast<uintptr_t> (ptr)) {}
+	Ptr (const void * ptr) : p (reinterpret_cast<uintptr_t> (ptr)) {}
 
 	template <typename T> T as (void) const { return reinterpret_cast<T> (p); }
-	template <typename T> operator T *(void) const { return as<T *> (); }
 	template <typename T> T & as_ref (void) const {
 		ASSERT_SAFE (p != 0);
 		return *as<T *> ();
 	}
+	operator void *(void) const { return as<void *> (); }
 
 	Ptr add (size_t off) const { return Ptr (p + off); }
 	Ptr sub (size_t off) const { return Ptr (p - off); }
 	size_t sub (Ptr ptr) const { return p - ptr.p; }
-	Ptr lshift (size_t sh) const { return Ptr (p << sh); }
-	Ptr rshift (size_t sh) const { return Ptr (p >> sh); }
 
-	Ptr operator+(size_t off) const { return add (off); }
 	Ptr & operator+=(size_t off) { return * this = add (off); }
 	Ptr operator-(size_t off) const { return sub (off); }
 	Ptr & operator-=(size_t off) { return * this = sub (off); }
@@ -47,6 +44,13 @@ struct Ptr {
 	// Compute diff
 	size_t operator-(Ptr other) const { return p - other.p; }
 };
+
+inline Ptr operator+(Ptr lhs, size_t off) {
+	return lhs.add (off);
+}
+inline Ptr operator+(size_t off, Ptr rhs) {
+	return rhs.add (off);
+}
 
 inline bool operator<(Ptr lhs, Ptr rhs) {
 	return lhs.p < rhs.p;
@@ -66,13 +70,6 @@ inline bool operator==(Ptr lhs, Ptr rhs) {
 inline bool operator!=(Ptr lhs, Ptr rhs) {
 	return lhs.p != rhs.p;
 }
-
-/* Basic type to represent a piece of memory (ptr and size).
- */
-struct Block {
-	Ptr ptr{nullptr};
-	size_t size{0};
-};
 }
 
 #endif

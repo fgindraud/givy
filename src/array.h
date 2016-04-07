@@ -6,7 +6,7 @@
 #include <algorithm>
 #include <type_traits>
 
-#include "pointer.h"
+#include "block.h"
 #include "range.h"
 
 namespace Givy {
@@ -60,8 +60,8 @@ private:
 	size_t length;
 	Block memory;
 
-	T * array (void) { return memory.ptr; }
-	const T * array (void) const { return memory.ptr; }
+	T * array (void) { return static_cast<T *> (memory.ptr); }
+	const T * array (void) const { return static_cast<const T *> (memory.ptr); }
 
 public:
 	template <typename... Args>
@@ -111,10 +111,12 @@ template <typename T> inline size_t array_index (const T * t, const T * a) {
 template <typename T> inline size_t array_index (const T & t, const T * a) {
 	return array_index (&t, a);
 }
-template <typename T, size_t N> inline size_t array_index (const T * t, const StaticArray<T, N> & a) {
+template <typename T, size_t N>
+inline size_t array_index (const T * t, const StaticArray<T, N> & a) {
 	return array_index (t, a.data ());
 }
-template <typename T, size_t N> inline size_t array_index (const T & t, const StaticArray<T, N> & a) {
+template <typename T, size_t N>
+inline size_t array_index (const T & t, const StaticArray<T, N> & a) {
 	return array_index (&t, a);
 }
 }

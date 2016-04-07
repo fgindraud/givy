@@ -1,6 +1,7 @@
 #define ASSERT_LEVEL_SAFE
 
 #include "superpage_tracker.h"
+#include "block.h"
 #include "tests.h"
 
 using namespace Givy;
@@ -11,8 +12,8 @@ void sep (void) {
 
 struct SystemAlloc {
 	// For testing only...
-	Block allocate (size_t size, size_t) { return {Ptr (new char[size]), size}; }
-	void deallocate (Block blk) { delete[] blk.ptr.as<char *> (); }
+	Block allocate (size_t size, size_t) { return {new char[size], size}; }
+	void deallocate (Block blk) { delete[] static_cast<char*> (blk.ptr); }
 };
 
 int main (void) {
