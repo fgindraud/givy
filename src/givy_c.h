@@ -1,3 +1,4 @@
+#pragma once
 #ifndef GIVY_C_H
 #define GIVY_C_H
 

@@ -1,3 +1,4 @@
+#pragma once
 #ifndef ALLOCATOR_H
 #define ALLOCATOR_H
 // no inlined
@@ -663,7 +664,7 @@ namespace Allocator {
 		 */
 		ASSERT_STD (align <= VMem::page_size);
 		ASSERT_STD (Math::is_power_of_2 (align));
-		size = std::max (size, align);
+		size = std::max (size, align); // TODO find small block aligned
 
 		if (size < Thresholds::small_medium) {
 			// Small alloc

@@ -54,7 +54,8 @@ STATUS
 
 TODO next
 - example of sparse matrix multiply (threaded so not very interesting either)
-- remove requestmap
 - add waitingData and waitingOwner statuses
 - put waiters in a linked list, add head to metadata
+
+- annotate protocol with metadata creation points ?
 

@@ -1,3 +1,4 @@
+#pragma once
 #ifndef SUPERPAGE_TRACKER_H
 #define SUPERPAGE_TRACKER_H
 

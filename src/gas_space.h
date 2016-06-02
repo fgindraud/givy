@@ -1,3 +1,4 @@
+#pragma once
 #ifndef GAS_SPACE_H
 #define GAS_SPACE_H
 
@@ -57,7 +58,7 @@ namespace Gas {
 
 		size_t node_of_allocation (Ptr p) const {
 			ASSERT_SAFE (in_gas (p));
-			return (p - gas_interval.first ()) / superpage_by_node;
+			return (p - gas_interval.first ()) / (superpage_by_node * VMem::superpage_size);
 		}
 
 		// Superpage management

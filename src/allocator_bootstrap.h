@@ -1,3 +1,4 @@
+#pragma once
 #ifndef ALLOCATOR_BOOTSTRAP_H
 #define ALLOCATOR_BOOTSTRAP_H
 

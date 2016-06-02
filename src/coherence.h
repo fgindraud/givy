@@ -1,19 +1,39 @@
+#pragma once
 #ifndef COHERENCE_H
 #define COHERENCE_H
 
+#include <atomic>
 #include <bitset>
 #include <map>
-#include <atomic>
 #include <mutex>
 #include <thread>
+#include <utility>
 
-#include "types.h"
-#include "block.h"
-#include "network.h"
 #include "allocator.h"
+#include "block.h"
+#include "intrusive_list.h"
+#include "network.h"
+#include "range.h"
+#include "types.h"
 
 namespace Givy {
 namespace Coherence {
+
+	class Waiter;
+	using WaiterList = Intrusive::ForwardList<Waiter>;
+
+	class Waiter : public WaiterList::Element {
+	private:
+		std::atomic<int> waiting_for{0};
+
+	public:
+		void add_query (void) { waiting_for.fetch_add (1, std::memory_order_relaxed); }
+		void query_done (void) { waiting_for.fetch_sub (1, std::memory_order_relaxed); }
+		void wait (void) {
+			while (waiting_for.load (std::memory_order_acquire) > 0)
+				;
+		}
+	};
 
 	constexpr size_t max_supported_node = 64;
 
@@ -22,13 +42,11 @@ namespace Coherence {
 		std::bitset<max_supported_node> valid_set; // For owner only
 		BoundUint<max_supported_node> owner;
 		bool valid;
+		WaiterList::Atomic waiters;
 
-		static RegionMetadata invalid (void * ptr, const Gas::Space & space) {
-			return {{ptr, 0},
-			        {},
-			        static_cast<BoundUint<max_supported_node>> (space.node_of_allocation (ptr)),
-			        false};
-		}
+		// Invalid region for ptr
+		RegionMetadata (void * ptr, const Gas::Space & space)
+		    : blk{ptr, 0}, owner (space.node_of_allocation (ptr)), valid (false) {}
 	};
 
 	/* Coherence messages.
@@ -42,7 +60,9 @@ namespace Coherence {
 		InvalidationRequest,
 		InvalidationAck,
 		// Others
-		Deallocate
+		Deallocate,
+		// Control
+		NodeFinished,
 	};
 
 	struct DataRequestMsg {
@@ -71,17 +91,9 @@ namespace Coherence {
 		Block blk;
 	};
 
-	class Waiter {
-	private:
-		std::atomic<int> waiting_for{0};
-
-	public:
-		void add_query (void) { waiting_for.fetch_add (1, std::memory_order_relaxed); }
-		void query_done (void) { waiting_for.fetch_sub (1, std::memory_order_relaxed); }
-		void wait (void) {
-			while (waiting_for.load (std::memory_order_acquire) > 0)
-				;
-		}
+	struct NodeFinishedMsg {
+		MessageType type;
+		size_t from;
 	};
 
 	class Manager {
@@ -89,45 +101,69 @@ namespace Coherence {
 		std::mutex mutex;
 
 		const Gas::Space & space;
-		std::map<void *, RegionMetadata> regions;
+		Network & network;
+
+		std::thread thread;
+
 		/* metadata rationale:
 		 * - if regions is created locally and has never been shared: no metadata
 		 * - metadata is created at first need (DataReq / OwnerReq received)
 		 * - metadata is destroyed only at Free
 		 */
+		std::map<void *, RegionMetadata> regions;
 
-		Network & network;
-		std::multimap<void *, Waiter *> query_waiters;
-
-		std::thread thread;
+		/* Termination management : all nodes track the number of alive node.
+		 * On finish, a node decrements its alive counter, and broadcasts to everyone to let them
+		 * decrement theirs.
+		 * On zero, exit.
+		 */
+		size_t nb_node_still_running;
 
 		// ----------
 	public:
 		Manager (const Gas::Space & space, Network & network)
-		    : space (space), network (network), thread ([=] { event_loop (); }) {}
+		    : space (space),
+		      network (network),
+		      thread ([=] { event_loop (); }),
+		      nb_node_still_running (network.nb_node ()) {}
 
-		~Manager () { thread.join (); }
+		~Manager () {
+			// Send Finished messages
+			{
+				for (auto target : range (network.nb_node ()))
+					if (target != network.node_id ()) {
+						NodeFinishedMsg msg{MessageType::NodeFinished, network.node_id ()};
+						network.send_to (target, &msg, sizeof (msg));
+					}
+				// No self message, so track ourselves
+				std::lock_guard<std::mutex> lock (mutex);
+				nb_node_still_running--;
+				DEBUG_TEXT ("[N%zu] finished, count=%zu\n", network.node_id (), nb_node_still_running);
+			}
+
+			// Wait for system exit
+			thread.join ();
+		}
 
 		void request_region_valid (void * ptr) {
 			Waiter waiter;
 			{
 				std::lock_guard<std::mutex> lock (mutex);
 
-				auto metadata = regions.find (ptr);
-				if (metadata != regions.end ()) {
-					if (metadata->second.valid)
+				auto metadata = get_metadata (ptr);
+				if (metadata) {
+					if (metadata->valid)
 						return; // Already valid
 				} else {
 					if (space.in_local_interval (ptr))
 						return; // Valid and never share
-					// No header and not local
-					metadata = regions.emplace (ptr, RegionMetadata::invalid (ptr, space)).first;
+
+					// No header and not local : construct in place
+					metadata = create_metadata_invalid (ptr);
 				}
 
 				waiter.add_query ();
-				auto query = query_waiters.find (ptr);
-				query_waiters.emplace (ptr, &waiter);
-				if (query == query_waiters.end ()) {
+				if (metadata->waiters.push_front (waiter)) {
 					// Send query if no entry was in the table
 					DataRequestMsg msg{MessageType::DataRequest, ptr, network.node_id ()};
 					network.send_to (space.node_of_allocation (ptr), &msg, sizeof (msg));
@@ -137,28 +173,52 @@ namespace Coherence {
 		}
 
 	private:
-		void event_loop (void);
-	};
+		void on_data_request (const DataRequestMsg & msg) { std::lock_guard<std::mutex> lock (mutex); }
 
-	inline void Manager::event_loop (void) {
-		while (true) {
-			std::lock_guard<std::mutex> lock (mutex);
-			size_t from;
-			auto data = network.try_recv (from);
-			if (!data)
-				continue;
-			auto buf = Ptr (data.get ());
+		// Under lock !
+		RegionMetadata * get_metadata (void * ptr) {
+			auto it = regions.find (ptr);
+			if (it == regions.end ())
+				return nullptr;
+			else
+				return &(it->second);
+		}
+		RegionMetadata * create_metadata_invalid (void * ptr) {
+			return &(regions
+			             .emplace (std::piecewise_construct, std::forward_as_tuple (ptr),
+			                       std::forward_as_tuple (ptr, space))
+			             .first->second);
+		}
 
-			switch (buf.as_ref<MessageType> ()) {
-			case MessageType::DataRequest: {
-				/* ----------- */
-				
-			} break;
-			default:
-				break;
+		void event_loop (void) {
+			while (true) {
+				std::lock_guard<std::mutex> lock (mutex);
+				if (nb_node_still_running == 0) {
+					// EXIT
+					return;
+				}
+
+				size_t from;
+				auto data = network.try_recv (from);
+				if (!data)
+					continue;
+				auto buf = Ptr (data.get ());
+
+				switch (buf.as_ref<MessageType> ()) {
+				case MessageType::DataRequest: {
+					on_data_request (buf.as_ref<DataRequestMsg> ());
+				} break;
+				case MessageType::NodeFinished: {
+					nb_node_still_running--;
+					DEBUG_TEXT ("[N%zu] Recv NodeFinished(%zu), count=%zu\n", network.node_id (), from,
+					            nb_node_still_running);
+				} break;
+				default:
+					break;
+				}
 			}
 		}
-	}
+	};
 
 #if 0
 		void event_loop (Allocator::ThreadLocalHeap & tlh) {

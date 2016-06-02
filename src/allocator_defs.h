@@ -1,3 +1,4 @@
+#pragma once
 #ifndef ALLOCATOR_DEFS_H
 #define ALLOCATOR_DEFS_H
 

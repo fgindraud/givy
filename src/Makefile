@@ -12,7 +12,8 @@ LDFLAGS =
 TESTS_CPP = $(wildcard *.t.cpp)
 TESTS_EXEC = $(TESTS_CPP:%.t.cpp=test_%)
 
-all: $(TESTS_EXEC) givy
+#all: $(TESTS_EXEC) givy sparse-mm
+all: sparse-mm
 
 test_%: %.t.cpp $(wildcard *.h)
 	g++ $(CPPFLAGS) -o $@ $< $(LDFLAGS)
@@ -24,6 +25,13 @@ givy: LDFLAGS += -Wl,--gc-sections
 givy: main.cpp givy.cpp $(wildcard *.h)
 	mpic++ $(CPPFLAGS) -o $@ main.cpp givy.cpp $(LDFLAGS)
 
+sparse-mm: CPPFLAGS += -DASSERT_LEVEL_SAFE
+sparse-mm: CPPFLAGS += -ffunction-sections
+sparse-mm: LDFLAGS += -Wl,--gc-sections
+sparse-mm: LDFLAGS += -lopenblas
+sparse-mm: sparse-mm.cpp givy.cpp $(wildcard *.h)
+	mpic++ $(CPPFLAGS) -o $@ sparse-mm.cpp givy.cpp $(LDFLAGS)
+
 clean:
-	$(RM) $(TESTS_EXEC) givy
+	$(RM) $(TESTS_EXEC) givy sparse-mm
 

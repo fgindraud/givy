@@ -1,3 +1,4 @@
+#pragma once
 #ifndef BITMASK_H
 #define BITMASK_H
 

@@ -1,3 +1,4 @@
+#pragma once
 #ifndef CONCURRENCY_H
 #define CONCURRENCY_H
 

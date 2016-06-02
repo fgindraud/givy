@@ -1,13 +1,14 @@
+#pragma once
 #ifndef INTRUSIVE_LIST_H
 #define INTRUSIVE_LIST_H
 
-#include <iterator>
 #include <atomic>
-#include <tuple>
+#include <iterator>
 #include <mutex>
+#include <tuple>
 
-#include "reporting.h"
 #include "concurrency.h"
+#include "reporting.h"
 
 namespace Givy {
 namespace Intrusive {
@@ -57,19 +58,19 @@ namespace Intrusive {
 
 		public:
 			iterator_base () : iterator_base (nullptr) {}
-			bool operator==(iterator_base other) const { return current == other.current; }
-			bool operator!=(iterator_base other) const { return current != other.current; }
-			iterator_base & operator++(void) {
+			bool operator== (iterator_base other) const { return current == other.current; }
+			bool operator!= (iterator_base other) const { return current != other.current; }
+			iterator_base & operator++ (void) {
 				current = current->next;
 				return *this;
 			}
-			iterator_base operator++(int) {
+			iterator_base operator++ (int) {
 				auto cpy = *this;
 				++*this;
 				return cpy;
 			}
-			Type & operator*(void) const { return *static_cast<Type *> (current); }
-			Type * operator->(void) const { return static_cast<Type *> (current); }
+			Type & operator* (void) const { return *static_cast<Type *> (current); }
+			Type * operator-> (void) const { return static_cast<Type *> (current); }
 		};
 		using iterator = iterator_base<T, Element>;
 		using const_iterator = iterator_base<const T, const Element>;
@@ -87,13 +88,15 @@ namespace Intrusive {
 			std::atomic<Element *> head{nullptr};
 
 		public:
-			void push_front (T & t) {
+			// Return true if was empty
+			bool push_front (T & t) {
 				Element & e = t;
 				Element * expected = head.load (std::memory_order_relaxed);
 				do {
 					e.next = expected;
 				} while (!head.compare_exchange_weak (expected, &e, std::memory_order_release,
 				                                      std::memory_order_relaxed));
+				return expected == nullptr;
 			}
 
 			ForwardList take_all (void) {
@@ -131,9 +134,9 @@ namespace Intrusive {
 			}
 			// Copy/move is meaningless
 			Element (const Element &) = delete;
-			Element & operator=(const Element &) = delete;
+			Element & operator= (const Element &) = delete;
 			Element (Element &&) = delete;
-			Element & operator=(Element &&) = delete;
+			Element & operator= (Element &&) = delete;
 		};
 
 	private:
@@ -182,28 +185,28 @@ namespace Intrusive {
 
 		public:
 			iterator_base () : Elem (nullptr) {}
-			bool operator==(iterator_base other) const { return current == other.current; }
-			bool operator!=(iterator_base other) const { return current != other.current; }
-			iterator_base & operator++(void) {
+			bool operator== (iterator_base other) const { return current == other.current; }
+			bool operator!= (iterator_base other) const { return current != other.current; }
+			iterator_base & operator++ (void) {
 				current = current->next;
 				return *this;
 			}
-			iterator_base & operator--(void) {
+			iterator_base & operator-- (void) {
 				current = current->prev;
 				return *this;
 			}
-			iterator_base operator++(int) {
+			iterator_base operator++ (int) {
 				auto cpy = *this;
 				++*this;
 				return cpy;
 			}
-			iterator_base operator--(int) {
+			iterator_base operator-- (int) {
 				auto cpy = *this;
 				--*this;
 				return cpy;
 			}
-			Type & operator*(void) const { return *static_cast<Type *> (current); }
-			Type * operator->(void) const { return static_cast<Type *> (current); }
+			Type & operator* (void) const { return *static_cast<Type *> (current); }
+			Type * operator-> (void) const { return static_cast<Type *> (current); }
 		};
 		using iterator = iterator_base<T, Element>;
 		using const_iterator = iterator_base<const T, const Element>;

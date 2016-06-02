@@ -1,3 +1,4 @@
+#pragma once
 #ifndef REPORTING_H
 #define REPORTING_H
 

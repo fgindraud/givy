@@ -1,3 +1,4 @@
+#pragma once
 #ifndef ALLOCATOR_PAGE_BLOCK_MANAGER_H
 #define ALLOCATOR_PAGE_BLOCK_MANAGER_H
 
