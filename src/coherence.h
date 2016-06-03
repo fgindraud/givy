@@ -20,7 +20,7 @@ namespace Givy {
 namespace Coherence {
 
 	class Waiter;
-	using WaiterList = Intrusive::ForwardList<Waiter>;
+	using WaiterList = Intrusive::StackList<Waiter>;
 
 	class Waiter : public WaiterList::Element {
 	private:

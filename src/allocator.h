@@ -1,20 +1,19 @@
 #pragma once
 #ifndef ALLOCATOR_H
 #define ALLOCATOR_H
-// no inlined
 
-#include <atomic>
 #include <algorithm>
+#include <atomic>
 
-#include "reporting.h"
-#include "array.h"
-#include "types.h"
-#include "intrusive_list.h"
-#include "system.h"
-#include "gas_space.h"
 #include "allocator_bootstrap.h"
 #include "allocator_defs.h"
 #include "allocator_page_block_manager.h"
+#include "array.h"
+#include "gas_space.h"
+#include "intrusive_list.h"
+#include "reporting.h"
+#include "system.h"
+#include "types.h"
 
 namespace Givy {
 namespace Allocator {
@@ -32,7 +31,7 @@ namespace Allocator {
 
 	/* Lists types typedef
 	 */
-	using BlockFreeList = Intrusive::ForwardList<UnusedBlock>;
+	using BlockFreeList = Intrusive::StackList<UnusedBlock>;
 	using ThreadRemoteFreeList = BlockFreeList::Atomic;
 	using PageBlockUnusedList = Intrusive::QuickList<PageBlockHeader, 10>;
 	using SuperpageBlockOwnedList = Intrusive::List<SuperpageBlock>;
@@ -356,7 +355,7 @@ namespace Allocator {
 
 	namespace SizeClass {
 #ifdef ASSERT_SAFE_ENABLED
-		void print (void) {
+		inline void print (void) {
 			printf ("SizeClass config (max_nb_blocks = %zu):\n", max_nb_blocks);
 			for (auto & info : config)
 				printf ("[%zu] bs=%zu, pb_size=%zu, nb_block=%zu\n", size_t (info.sc_id), info.block_size,
@@ -367,28 +366,28 @@ namespace Allocator {
 
 	/* ---------------------------- PageBlockHeader IMPL -------------------------- */
 
-	Ptr PageBlockHeader::page_block (void) const {
+	inline Ptr PageBlockHeader::page_block (void) const {
 		return SuperpageBlock::from_pbh (*this).page_block_ptr (*this);
 	}
 
-	void PageBlockHeader::format (MemoryType type_, size_t pb_size, PageBlockHeader * head_) {
+	inline void PageBlockHeader::format (MemoryType type_, size_t pb_size, PageBlockHeader * head_) {
 		type = type_;
 		nb_page = pb_size;
 		head = head_;
 	}
 
-	size_t PageBlockHeader::available_small_blocks (const SizeClass::Info & info) const {
+	inline size_t PageBlockHeader::available_small_blocks (const SizeClass::Info & info) const {
 		return sb_nb_unused + (info.nb_blocks - sb_nb_carved);
 	}
 
-	void PageBlockHeader::configure_small_blocks (const SizeClass::Info & info) {
+	inline void PageBlockHeader::configure_small_blocks (const SizeClass::Info & info) {
 		sb_sizeclass = info.sc_id;
 		sb_nb_carved = 0;
 		sb_nb_unused = 0;
 		sb_unused.clear ();
 	}
 
-	Ptr PageBlockHeader::take_small_block (const SizeClass::Info & info) {
+	inline Ptr PageBlockHeader::take_small_block (const SizeClass::Info & info) {
 		ASSERT_SAFE (available_small_blocks (info) > 0);
 		if (!sb_unused.empty ()) {
 			// Reuse unused block
@@ -404,7 +403,7 @@ namespace Allocator {
 		}
 	}
 
-	void PageBlockHeader::put_small_block (Ptr p, const SizeClass::Info & info) {
+	inline void PageBlockHeader::put_small_block (Ptr p, const SizeClass::Info & info) {
 		ASSERT_SAFE (page_block () <= p);
 		ASSERT_SAFE (p < page_block () + VMem::page_size * size ());
 
@@ -416,7 +415,7 @@ namespace Allocator {
 	}
 
 #ifdef ASSERT_SAFE_ENABLED
-	void PageBlockHeader::print (void) const {
+	inline void PageBlockHeader::print (void) const {
 		if (type == MemoryType::small) {
 			auto & info = SizeClass::config[sb_sizeclass];
 			printf ("Small [S=%zu,sc=%zu,bs=%zu,cvd=%zu/%zu,un=%zu]\n", size (), size_t (sb_sizeclass),
@@ -437,8 +436,8 @@ namespace Allocator {
 
 	/* ---------------------------- SuperpageBlock IMPL --------------------------- */
 
-	SuperpageBlock::SuperpageBlock (size_t superpage_nb_, size_t huge_alloc_page_nb,
-	                                ThreadLocalHeap * owner_)
+	inline SuperpageBlock::SuperpageBlock (size_t superpage_nb_, size_t huge_alloc_page_nb,
+	                                       ThreadLocalHeap * owner_)
 	    : owner (owner_), superpage_nb (superpage_nb_) {
 		DEBUG_TEXT ("[%p]SuperpageBlock(%zu)\n", this, size ());
 
@@ -454,7 +453,7 @@ namespace Allocator {
 		unused.insert (pbh_table[header_space_pages]); // Add initial unused page block to list
 	}
 
-	SuperpageBlock::~SuperpageBlock () {
+	inline SuperpageBlock::~SuperpageBlock () {
 #ifdef ASSERT_SAFE_ENABLED
 		/* TODO for now, in SAFE build, allocator termination is an error if some blocks have not been
 		 * deallocated.
@@ -465,38 +464,38 @@ namespace Allocator {
 		DEBUG_TEXT ("[%p]~SuperpageBlock()\n", this);
 	}
 
-	bool SuperpageBlock::completely_unused (void) const {
+	inline bool SuperpageBlock::completely_unused (void) const {
 		return size () == 1 && all_page_blocks_unused ();
 	}
 
-	SuperpageBlock & SuperpageBlock::from_pointer_in_first_superpage (Ptr inside) {
+	inline SuperpageBlock & SuperpageBlock::from_pointer_in_first_superpage (Ptr inside) {
 		// Just use alignement
 		return inside.align (VMem::superpage_size).as_ref<SuperpageBlock> ();
 	}
-	SuperpageBlock & SuperpageBlock::from_pbh (PageBlockHeader & pbh) {
+	inline SuperpageBlock & SuperpageBlock::from_pbh (PageBlockHeader & pbh) {
 		// Pbh are stored in first superpage
 		return from_pointer_in_first_superpage (Ptr (&pbh));
 	}
-	const SuperpageBlock & SuperpageBlock::from_pbh (const PageBlockHeader & pbh) {
+	inline const SuperpageBlock & SuperpageBlock::from_pbh (const PageBlockHeader & pbh) {
 		// Pbh are stored in first superpage
 		return from_pointer_in_first_superpage (Ptr (&pbh));
 	}
 
 	/* Huge Alloc */
 
-	bool SuperpageBlock::in_huge_alloc (Ptr p) const {
+	inline bool SuperpageBlock::in_huge_alloc (Ptr p) const {
 		ASSERT_SAFE (ptr () <= p);
 		ASSERT_SAFE (p < ptr () + size () * VMem::superpage_size);
 		return ptr () + huge_alloc_pb_index * VMem::page_size <= p;
 	}
 
-	Block SuperpageBlock::huge_alloc_memory (void) const {
+	inline Block SuperpageBlock::huge_alloc_memory (void) const {
 		ASSERT_SAFE (superpage_nb > 1);
 		size_t huge_alloc_page_nb = superpage_nb * VMem::superpage_page_nb - huge_alloc_pb_index;
 		return {ptr () + huge_alloc_pb_index * VMem::page_size, huge_alloc_page_nb * VMem::page_size};
 	}
 
-	void SuperpageBlock::destroy_huge_alloc (void) {
+	inline void SuperpageBlock::destroy_huge_alloc (void) {
 		/* Convert huge_alloc part of first superpage to unused space, if there is any.
 		 * As the huge alloc trailing page block was formatted to a valid page block (but with Huge
 		 * type), we can use free_page_block directly.
@@ -510,7 +509,7 @@ namespace Allocator {
 
 	/* Page block */
 
-	PageBlockHeader * SuperpageBlock::allocate_page_block (size_t page_nb, MemoryType type) {
+	inline PageBlockHeader * SuperpageBlock::allocate_page_block (size_t page_nb, MemoryType type) {
 		ASSERT_SAFE (page_nb > 0);
 		ASSERT_SAFE (page_nb < available_pages);
 
@@ -529,7 +528,7 @@ namespace Allocator {
 		return pbh;
 	}
 
-	void SuperpageBlock::free_page_block (PageBlockHeader & pbh) {
+	inline void SuperpageBlock::free_page_block (PageBlockHeader & pbh) {
 		PageBlockHeader * start = &pbh;
 		PageBlockHeader * end = start + pbh.size ();
 		PageBlockHeader * const table_start = pbh_table;
@@ -551,35 +550,35 @@ namespace Allocator {
 		unused.insert (*start);
 	}
 
-	size_t SuperpageBlock::page_block_index (const PageBlockHeader & pbh) const {
+	inline size_t SuperpageBlock::page_block_index (const PageBlockHeader & pbh) const {
 		return array_index (pbh, pbh_table);
 	}
 
-	Ptr SuperpageBlock::page_block_ptr (const PageBlockHeader & pbh) const {
+	inline Ptr SuperpageBlock::page_block_ptr (const PageBlockHeader & pbh) const {
 		return ptr () + page_block_index (pbh) * VMem::page_size;
 	}
 
-	Block SuperpageBlock::page_block_memory (const PageBlockHeader & pbh) const {
+	inline Block SuperpageBlock::page_block_memory (const PageBlockHeader & pbh) const {
 		return {page_block_ptr (pbh), pbh.size () * VMem::page_size};
 	}
 
-	PageBlockHeader & SuperpageBlock::page_block_header (size_t pb_index) {
+	inline PageBlockHeader & SuperpageBlock::page_block_header (size_t pb_index) {
 		return pbh_table[pb_index];
 	}
 
-	PageBlockHeader & SuperpageBlock::page_block_header (Ptr p) {
+	inline PageBlockHeader & SuperpageBlock::page_block_header (Ptr p) {
 		ASSERT_SAFE (ptr () <= p);
 		ASSERT_SAFE (p < ptr () + VMem::superpage_size);
 		size_t pb_index = (p - ptr ()) / VMem::page_size;
 		return *page_block_header (pb_index).head;
 	}
 
-	bool SuperpageBlock::all_page_blocks_unused (void) const {
+	inline bool SuperpageBlock::all_page_blocks_unused (void) const {
 		// Test if unused quicklist contains every page (except Reserved and Huge ones)
 		return unused.size () == available_pb_index () - header_space_pages;
 	}
 
-	size_t SuperpageBlock::available_pb_index (void) const {
+	inline size_t SuperpageBlock::available_pb_index (void) const {
 		/* huge_alloc_pb_index can be above superpage_page_nb, if a huge alloc is smaller than a
 		 * superpage.
 		 * available_pb_index () gives the max pb_index that can be used.
@@ -589,13 +588,13 @@ namespace Allocator {
 
 	/* Ownership */
 
-	ThreadLocalHeap * SuperpageBlock::get_owner (void) const {
+	inline ThreadLocalHeap * SuperpageBlock::get_owner (void) const {
 		return owner.load (std::memory_order_acquire);
 	}
 
-	void SuperpageBlock::disown (void) { owner.store (nullptr, std::memory_order_release); }
+	inline void SuperpageBlock::disown (void) { owner.store (nullptr, std::memory_order_release); }
 
-	bool SuperpageBlock::adopt (ThreadLocalHeap * adopter) {
+	inline bool SuperpageBlock::adopt (ThreadLocalHeap * adopter) {
 		ThreadLocalHeap * expected = nullptr;
 		return owner.compare_exchange_strong (expected, adopter, std::memory_order_acq_rel,
 		                                      std::memory_order_relaxed);
@@ -603,20 +602,21 @@ namespace Allocator {
 
 	/* Private */
 
-	void SuperpageBlock::format_pbh (PageBlockHeader * from, PageBlockHeader * to, MemoryType type) {
+	inline void SuperpageBlock::format_pbh (PageBlockHeader * from, PageBlockHeader * to,
+	                                        MemoryType type) {
 		size_t s = to - from;
 		for (auto pbh = from; pbh < to; ++pbh)
 			pbh->format (type, s, from);
 	}
-	void SuperpageBlock::format_pbh (PageBlockHeader * from, size_t size, MemoryType type) {
+	inline void SuperpageBlock::format_pbh (PageBlockHeader * from, size_t size, MemoryType type) {
 		format_pbh (from, from + size, type);
 	}
-	void SuperpageBlock::format_pbh (size_t from, size_t to, MemoryType type) {
+	inline void SuperpageBlock::format_pbh (size_t from, size_t to, MemoryType type) {
 		format_pbh (pbh_table + from, pbh_table + to, type);
 	}
 
 #ifdef ASSERT_SAFE_ENABLED
-	void SuperpageBlock::print (void) const {
+	inline void SuperpageBlock::print (void) const {
 		printf ("S=%zu, P=%p", size (), ptr ().as<void *> ());
 		if (size () > 1)
 			printf (" (huge alloc=%zu pages)", VMem::superpage_page_nb * size () - huge_alloc_pb_index);
@@ -631,9 +631,9 @@ namespace Allocator {
 
 	/* ---------------------------- ThreadLocalHeap IMPL -------------------------- */
 
-	ThreadLocalHeap::ThreadLocalHeap () { DEBUG_TEXT ("[%p]ThreadLocalHeap()\n", this); }
+	inline ThreadLocalHeap::ThreadLocalHeap () { DEBUG_TEXT ("[%p]ThreadLocalHeap()\n", this); }
 
-	ThreadLocalHeap::~ThreadLocalHeap () {
+	inline ThreadLocalHeap::~ThreadLocalHeap () {
 		DEBUG_TEXT ("[%p]~ThreadLocalHeap()\n", this);
 
 		// process_thread_remote_frees ();
@@ -653,7 +653,7 @@ namespace Allocator {
 		}
 	}
 
-	Block ThreadLocalHeap::allocate (size_t size, size_t align, Gas::Space & space) {
+	inline Block ThreadLocalHeap::allocate (size_t size, size_t align, Gas::Space & space) {
 		process_thread_remote_frees (space);
 
 		/* Alignment support.
@@ -680,7 +680,7 @@ namespace Allocator {
 		}
 	}
 
-	void ThreadLocalHeap::deallocate (Ptr ptr, Gas::Space & space) {
+	inline void ThreadLocalHeap::deallocate (Ptr ptr, Gas::Space & space) {
 		process_thread_remote_frees (space);
 
 		auto & spb = space.superpage_sequence_start (ptr).as_ref<SuperpageBlock> ();
@@ -720,14 +720,14 @@ namespace Allocator {
 		}
 	}
 
-	void ThreadLocalHeap::deallocate (Block blk, Gas::Space & space) {
+	inline void ThreadLocalHeap::deallocate (Block blk, Gas::Space & space) {
 		// TODO optimize for small/medium alloc, no call to SPT
 		// DEBUG_TEXT ("free {%p,%zu}\n", blk.ptr.as<void* >(), blk.size);
 		deallocate (blk.ptr, space);
 	}
 
-	SuperpageBlock & ThreadLocalHeap::create_superpage_block (size_t huge_alloc_size,
-	                                                          Gas::Space & space) {
+	inline SuperpageBlock & ThreadLocalHeap::create_superpage_block (size_t huge_alloc_size,
+	                                                                 Gas::Space & space) {
 		/* Compute sizes
 		 * If huge_alloc_size is 0, allocates just one superpage
 		 */
@@ -741,7 +741,7 @@ namespace Allocator {
 		return spb;
 	}
 
-	void ThreadLocalHeap::destroy_superpage_block (SuperpageBlock & spb, Gas::Space & space) {
+	inline void ThreadLocalHeap::destroy_superpage_block (SuperpageBlock & spb, Gas::Space & space) {
 		owned_superpage_blocks.remove (spb);
 		auto base = spb.ptr ();
 		auto size = spb.size ();
@@ -749,7 +749,8 @@ namespace Allocator {
 		space.release_superpage_sequence (base, size);
 	}
 
-	void ThreadLocalHeap::destroy_superpage_huge_alloc (SuperpageBlock & spb, Gas::Space & space) {
+	inline void ThreadLocalHeap::destroy_superpage_huge_alloc (SuperpageBlock & spb,
+	                                                           Gas::Space & space) {
 		auto base = spb.ptr ();
 		auto size = spb.size ();
 		ASSERT_STD (size > 1);
@@ -758,8 +759,8 @@ namespace Allocator {
 		space.trim_superpage_sequence (base, size); // Destroy the trailing superpages
 	}
 
-	PageBlockHeader & ThreadLocalHeap::create_page_block (size_t nb_page, MemoryType type,
-	                                                      Gas::Space & space) {
+	inline PageBlockHeader & ThreadLocalHeap::create_page_block (size_t nb_page, MemoryType type,
+	                                                             Gas::Space & space) {
 		// Try to take from existing superpage blocks
 		for (auto & spb : owned_superpage_blocks)
 			if (PageBlockHeader * pbh = spb.allocate_page_block (nb_page, type)) {
@@ -772,14 +773,14 @@ namespace Allocator {
 		return *pbh;
 	}
 
-	void ThreadLocalHeap::destroy_page_block (PageBlockHeader & pbh, SuperpageBlock & spb,
-	                                          Gas::Space & space) {
+	inline void ThreadLocalHeap::destroy_page_block (PageBlockHeader & pbh, SuperpageBlock & spb,
+	                                                 Gas::Space & space) {
 		spb.free_page_block (pbh);
 		if (spb.completely_unused ())
 			destroy_superpage_block (spb, space);
 	}
 
-	Block ThreadLocalHeap::allocate_small_block (size_t size, Gas::Space & space) {
+	inline Block ThreadLocalHeap::allocate_small_block (size_t size, Gas::Space & space) {
 		auto & info = SizeClass::config[SizeClass::id (std::max (size, Thresholds::smallest))];
 		auto & pb_list = active_small_page_blocks[info.sc_id];
 
@@ -801,8 +802,8 @@ namespace Allocator {
 		return {p, info.block_size};
 	}
 
-	void ThreadLocalHeap::destroy_small_block (Ptr ptr, PageBlockHeader & pbh, SuperpageBlock & spb,
-	                                           Gas::Space & space) {
+	inline void ThreadLocalHeap::destroy_small_block (Ptr ptr, PageBlockHeader & pbh,
+	                                                  SuperpageBlock & spb, Gas::Space & space) {
 		auto & info = SizeClass::config[pbh.sb_sizeclass];
 		pbh.put_small_block (ptr, info);
 
@@ -817,8 +818,8 @@ namespace Allocator {
 		}
 	}
 
-	void ThreadLocalHeap::thread_local_deallocate (Ptr ptr, SuperpageBlock & spb,
-	                                               Gas::Space & space) {
+	inline void ThreadLocalHeap::thread_local_deallocate (Ptr ptr, SuperpageBlock & spb,
+	                                                      Gas::Space & space) {
 		ASSERT_SAFE (spb.ptr () <= ptr);
 		ASSERT_SAFE (ptr < spb.ptr () + spb.size () * VMem::superpage_size);
 		if (spb.in_huge_alloc (ptr)) {
@@ -842,7 +843,7 @@ namespace Allocator {
 		}
 	}
 
-	void ThreadLocalHeap::process_thread_remote_frees (Gas::Space & space) {
+	inline void ThreadLocalHeap::process_thread_remote_frees (Gas::Space & space) {
 		BlockFreeList unused_blocks = remote_freed_blocks.take_all ();
 		for (auto it = unused_blocks.begin (); it != unused_blocks.end ();) {
 			Ptr p = it->ptr ();
@@ -853,7 +854,7 @@ namespace Allocator {
 	}
 
 #ifdef ASSERT_SAFE_ENABLED
-	void ThreadLocalHeap::print (const Gas::Space & space) const {
+	inline void ThreadLocalHeap::print (const Gas::Space & space) const {
 		printf ("====== ThreadLocalHeap [%p] ======\n", this);
 		printf ("Owned SuperpageBlocks:\n");
 		for (auto & spb : owned_superpage_blocks) {
