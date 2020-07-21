@@ -1,0 +1,13 @@
+\documentclass{standalone}
+\usepackage{tabularx}
+
+\begin{document}
+% O=ok, E=error
+% ans=answer, fwd=forward
+% P=protocol, Mal=malloc api, DR=data race
+\begin{tabular}{|l|*8{c|}}\hline
+	\textbf{Recv //} & DataReq & DataAns & OwnReq & OwnTrans & InvReq & InvAck & FreeReq & FreeAck \\\hline
+	DataReq          & O(ans)  & O(fwd)  & E(DR)  & E(DR)    & E(DR)  & E(DR)  & E(Mal)  & E(Mal)  \\\hline
+	DataAns          &         & E(P)    & E(DR)  & E(DR)    & E(DR)  & E(DR)  & E(Mal)  & E(Mal)  \\\hline
+\end{tabular}
+\end{document}
