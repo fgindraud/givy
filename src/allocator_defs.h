@@ -1,6 +1,6 @@
 #pragma once
-#ifndef ALLOCATOR_DEFS_H
-#define ALLOCATOR_DEFS_H
+#ifndef GIVY_ALLOCATOR_DEFS_H
+#define GIVY_ALLOCATOR_DEFS_H
 
 namespace Givy {
 namespace Allocator {

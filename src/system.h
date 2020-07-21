@@ -1,6 +1,6 @@
 #pragma once
-#ifndef SYSTEM_H
-#define SYSTEM_H
+#ifndef GIVY_SYSTEM_H
+#define GIVY_SYSTEM_H
 
 #include <unistd.h> // sysconf
 

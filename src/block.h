@@ -1,6 +1,6 @@
 #pragma once
-#ifndef BLOCK_H
-#define BLOCK_H
+#ifndef GIVY_BLOCK_H
+#define GIVY_BLOCK_H
 
 #ifdef __cplusplus
 #include <cstddef>

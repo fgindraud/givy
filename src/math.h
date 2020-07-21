@@ -1,6 +1,6 @@
 #pragma once
-#ifndef MATH_H
-#define MATH_H
+#ifndef GIVY_MATH_H
+#define GIVY_MATH_H
 
 #include "bitmask.h"
 

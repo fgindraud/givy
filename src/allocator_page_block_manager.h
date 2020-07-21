@@ -1,6 +1,6 @@
 #pragma once
-#ifndef ALLOCATOR_PAGE_BLOCK_MANAGER_H
-#define ALLOCATOR_PAGE_BLOCK_MANAGER_H
+#ifndef GIVY_ALLOCATOR_PAGE_BLOCK_MANAGER_H
+#define GIVY_ALLOCATOR_PAGE_BLOCK_MANAGER_H
 
 #include "types.h"
 #include "array.h"

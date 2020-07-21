@@ -1,6 +1,6 @@
 #pragma once
-#ifndef CONCURRENCY_H
-#define CONCURRENCY_H
+#ifndef GIVY_CONCURRENCY_H
+#define GIVY_CONCURRENCY_H
 
 #include <atomic>
 

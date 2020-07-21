@@ -1,6 +1,6 @@
 #pragma once
-#ifndef ARRAY_H
-#define ARRAY_H
+#ifndef GIVY_ARRAY_H
+#define GIVY_ARRAY_H
 
 #include <array>
 #include <utility>

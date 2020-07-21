@@ -1,6 +1,6 @@
 #pragma once
-#ifndef GAS_SPACE_H
-#define GAS_SPACE_H
+#ifndef GIVY_GAS_SPACE_H
+#define GIVY_GAS_SPACE_H
 
 #include <cstdio>
 

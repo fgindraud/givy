@@ -1,6 +1,6 @@
 #pragma once
-#ifndef POINTER_H
-#define POINTER_H
+#ifndef GIVY_POINTER_H
+#define GIVY_POINTER_H
 
 #include <cstdint> // uintN_t uintptr_t
 #include <cstddef> // size_t std::nullptr_t

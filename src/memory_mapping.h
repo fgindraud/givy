@@ -1,6 +1,6 @@
 #pragma once
-#ifndef MEMORY_MAPPING_H
-#define MEMORY_MAPPING_H
+#ifndef GIVY_MEMORY_MAPPING_H
+#define GIVY_MEMORY_MAPPING_H
 
 #include <cerrno>
 #include <sys/mman.h>

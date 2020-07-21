@@ -1,6 +1,6 @@
 #pragma once
-#ifndef INTRUSIVE_LIST_H
-#define INTRUSIVE_LIST_H
+#ifndef GIVY_INTRUSIVE_LIST_H
+#define GIVY_INTRUSIVE_LIST_H
 
 #include <atomic>
 #include <iterator>
@@ -39,11 +39,7 @@ namespace Intrusive {
 		ForwardListElement * next;
 	};
 
-	// TODO ForwardList<... Options>
-	// Counter<IntType>.
-	// TrackTail (StackList!=ForwardList).
-	// ForwardListImpl<Counter, TailStruct, <..>> : public Counter, public TailStruct, ..{}
-	// using ForwardList<Options..> = ForwardListImpl<GetCounter<Options...>, GetTail<Opt..>..
+	// TODO configurable_list ?
 
 	/* Stack structure (pop,push,iterate over), using links (not array).
 	 * Smallest overhead:
@@ -125,7 +121,7 @@ namespace Intrusive {
 		const_iterator end (void) const { return {nullptr}; }
 	};
 
-	/*
+	/* TODO descr
 	 *
 	 * A true
 	 * "advanced" version of the ForwardList.

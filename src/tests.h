@@ -1,6 +1,6 @@
 #pragma once
-#ifndef TESTS_H
-#define TESTS_H
+#ifndef GIVY_TESTS_H
+#define GIVY_TESTS_H
 
 #include <thread>
 #include <array>

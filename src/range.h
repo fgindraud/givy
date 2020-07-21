@@ -1,6 +1,6 @@
 #pragma once
-#ifndef RANGE_H
-#define RANGE_H
+#ifndef GIVY_RANGE_H
+#define GIVY_RANGE_H
 
 #include <iterator>
 #include <type_traits>

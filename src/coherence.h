@@ -1,6 +1,6 @@
 #pragma once
-#ifndef COHERENCE_H
-#define COHERENCE_H
+#ifndef GIVY_COHERENCE_H
+#define GIVY_COHERENCE_H
 
 #include <atomic>
 #include <bitset>

@@ -39,7 +39,6 @@ Coherence:
 
 Structure:
 - Keep most code in header (especially template stuff, like allocator)
-- Finish to inline everything (for safety if using multiple cpp)
 - structures defined in givy.cpp, and interlocked there
 - startup: 
 	- move to using map_anywhere to allocate spb. will need tlh flushing when switching to GAS mode
@@ -56,6 +55,7 @@ TODO next
 - example of sparse matrix multiply (threaded so not very interesting either)
 - add waitingData and waitingOwner statuses
 - put waiters in a linked list, add head to metadata
+- free: signal all people, and creator will delete stuff only when all have freed (but free() does not block).
 
 - annotate protocol with metadata creation points ?
 

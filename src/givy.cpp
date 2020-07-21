@@ -14,7 +14,11 @@
 #include "reporting.h"
 #include "types.h"
 
+#include "instance.h"
+
 namespace Givy {
+	
+
 namespace {
 	// Global static storage structures
 	struct StaticStuff {

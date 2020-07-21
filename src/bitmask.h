@@ -1,6 +1,6 @@
 #pragma once
-#ifndef BITMASK_H
-#define BITMASK_H
+#ifndef GIVY_BITMASK_H
+#define GIVY_BITMASK_H
 
 #include <limits> // numeric_limits
 #include <cstdint> // uintN_t

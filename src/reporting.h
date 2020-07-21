@@ -1,6 +1,6 @@
 #pragma once
-#ifndef REPORTING_H
-#define REPORTING_H
+#ifndef GIVY_REPORTING_H
+#define GIVY_REPORTING_H
 
 #include <cstdio>
 #include <cstdlib>

@@ -1,6 +1,6 @@
 #pragma once
-#ifndef ALLOCATOR_BOOTSTRAP_H
-#define ALLOCATOR_BOOTSTRAP_H
+#ifndef GIVY_ALLOCATOR_BOOTSTRAP_H
+#define GIVY_ALLOCATOR_BOOTSTRAP_H
 
 #include "reporting.h"
 #include "block.h"

@@ -1,6 +1,6 @@
 #pragma once
-#ifndef SUPERPAGE_TRACKER_H
-#define SUPERPAGE_TRACKER_H
+#ifndef GIVY_SUPERPAGE_TRACKER_H
+#define GIVY_SUPERPAGE_TRACKER_H
 
 #include <atomic>
 #include <tuple>

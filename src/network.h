@@ -1,6 +1,6 @@
 #pragma once
-#ifndef NETWORK_H
-#define NETWORK_H
+#ifndef GIVY_NETWORK_H
+#define GIVY_NETWORK_H
 
 #include <mpi.h>
 

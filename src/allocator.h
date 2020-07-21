@@ -1,6 +1,6 @@
 #pragma once
-#ifndef ALLOCATOR_H
-#define ALLOCATOR_H
+#ifndef GIVY_ALLOCATOR_H
+#define GIVY_ALLOCATOR_H
 
 #include <algorithm>
 #include <atomic>
